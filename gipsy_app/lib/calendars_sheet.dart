@@ -142,6 +142,7 @@ class _CalendarsSheetState extends State<CalendarsSheet> {
             const SizedBox(height: 12),
             const Text(
               'Where to find the link:\n'
+              '• Moodle / Open LMS: Calendar, then Import or export calendars, Export calendar, pick All courses and Recent and next 60 days, then Get calendar URL\n'
               '• Canvas: Calendar, then Calendar Feed (bottom right)\n'
               '• Google Calendar or Classroom: Settings, pick the calendar, then "Secret address in iCal format"\n'
               '• Schoology: Calendar, then Export\n'

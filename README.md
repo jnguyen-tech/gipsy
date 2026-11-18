@@ -56,6 +56,7 @@ Gipsy combines:
   ]
   ```
   * **Google Calendar:** Settings → pick the calendar → *Integrate calendar* → copy **Secret address in iCal format**.
+  * **Moodle / Open LMS:** Calendar → *Import or export calendars* → *Export calendar* → Events to export: **All courses** (or *All events*), Time period: **Recent and next 60 days** → *Get calendar URL* → copy the link. Pick **School** when you link it.
   * **Canvas:** Calendar → *Calendar Feed* (bottom right) → copy the link. Schoology and most school systems have a similar "iCal feed" or "subscribe" link.
   * **Outlook:** Settings → Calendar → Shared calendars → *Publish a calendar* → copy the ICS link.
   * **iPhone/iCloud:** in the Calendar app, tap ⓘ next to a calendar → *Public Calendar* → share the link.
