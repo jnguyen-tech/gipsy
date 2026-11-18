@@ -372,6 +372,20 @@ class _Bubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                for (final t in line.tools)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.travel_explore, size: 14, color: GipsyColors.amber),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(t, style: const TextStyle(color: GipsyColors.amber, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (!user && showThinking && line.thinking.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),

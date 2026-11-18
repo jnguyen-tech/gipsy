@@ -130,11 +130,41 @@ flutter run -d windows               # needs Visual Studio "Desktop development 
 flutter run -t tool/visor_gallery.dart -d windows   # all five visor states side by side
 ```
 
+## Current events and the markets tutor
+
+Gipsy's model (Qwen3) stops learning at its training date, so the hub gives it tools and a library:
+
+* **Tools** (`gipsy_hub/tools.py`, no API keys): `search_news` (Google News, plus DuckDuckGo summaries), `web_search` (DuckDuckGo), `get_price` (stocks, ETFs, gold, silver, oil, crypto, Treasury yields, the dollar), `get_emas` (20/50/200 EMAs and golden/death crosses from daily closes) and `get_economic` (FRED: mortgage rates, home prices, CPI, unemployment, Fed funds, the yield curve). The model decides when to call one. The app shows a small amber line such as "Looking up the price of gold" while it runs.
+* **Knowledge pack** (`gipsy_hub/knowledge/*.md`): original lessons on TradingView, chart reading, EMAs, how gold, silver, bonds, the dollar, crypto and housing relate, and risk management. Every question is matched against these sections and the best few are handed to the model (RAG). Add your own `.md` files and restart the hub.
+* Everything market-related is framed as education, not financial advice. Quotes can be delayed.
+
+One-time setup on the PC, after pulling this update:
+
+```
+ollama pull nomic-embed-text
+cd gipsy_hub
+.venv\Scripts\pip install -r requirements.txt
+```
+
+Then restart Gipsy Hub. To check it worked, open these in a browser on the PC:
+
+* `http://127.0.0.1:8765/api/health` shows `"knowledge_mode": "embeddings"` and the tool list
+* `http://127.0.0.1:8765/api/tools/get_price?q=gold`
+* `http://127.0.0.1:8765/api/tools/get_emas?q=bitcoin`
+* `http://127.0.0.1:8765/api/tools/search_news?q=federal reserve`
+* `http://127.0.0.1:8765/api/knowledge/search?q=what is a golden cross`
+
+Try asking Gipsy: "What's in the news today?", "Where's gold right now and is it above its 200 EMA?", "Teach me how to add EMAs on TradingView", "Why do mortgage rates go up when the 10-year yield rises?"
+
+Tests (no internet or Ollama needed): `cd gipsy_hub` then `python -m unittest discover tests`.
+
 ## How it works (for the write-up)
 
 * **Wake word:** the app learns how loud your room is. When it hears a sound clearly above that, it records until you go quiet. Only those short clips go to Whisper on the PC. If the text starts with "Hey Gipsy" (or Whisper's spellings of it: Gypsy, Jipsy and so on), Gipsy wakes up. No audio ever leaves your network.
 * **Streaming speech:** the reply streams from Ollama token by token. Each finished sentence goes to Piper straight away and is queued for playback in order. Gipsy starts talking about a second after the first sentence is ready.
 * **Deeper voice for free:** Piper speaks 10% faster, and the WAV header gets a 10% lower sample rate. The result plays at normal speed but sounds deeper, with no extra processing.
+* **Tool calling:** the hub sends Ollama a list of tools with every chat. If the model replies with a tool call instead of words, the hub runs it, adds the result to the conversation and asks again (up to four rounds). The model's own date sense is fixed at training time, so the hub also tells it today's date.
+* **RAG from scratch:** each lesson section is turned into a 768-number vector by `nomic-embed-text` and cached. A question is embedded the same way, and the closest sections by cosine similarity go into the prompt as notes. If the embedding model is missing, a keyword score is used instead.
 * **Visor sync:** the app measures the loudness of the reply audio every 40 ms and drives the equaliser bars from the playback position. The bars move with the real words.
 
 ## Files
@@ -150,5 +180,9 @@ gipsy_app/lib/
   settings_page.dart addresses, voice and wake-word switches
 gipsy_hub/
   gipsy_hub.py       FastAPI server: /api/chat, /api/tts, /api/stt, /api/health
+  tools.py           news, web search, prices, EMAs, FRED data the model can call
+  knowledge.py       the RAG search over knowledge/*.md
+  knowledge/         markets lessons (TradingView, EMAs, gold/silver/bonds/crypto/housing)
+  tests/             offline tests with a fake Ollama
 .github/workflows/build-apps.yml   free cloud builds for Windows + iPhone
 ```

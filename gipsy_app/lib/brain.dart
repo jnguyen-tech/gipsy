@@ -13,6 +13,8 @@ class ChatLine {
   final String role; // user | assistant | system
   String text;
   String thinking;
+  /// Tools the hub used for this reply, e.g. "Checking the news: gold".
+  final List<String> tools = [];
   bool get isUser => role == 'user';
 }
 
@@ -246,6 +248,9 @@ class GipsyBrain extends ChangeNotifier {
             for (final s in splitter.add(ev.text)) {
               sayInOrder(s);
             }
+            notifyListeners();
+          case 'tool':
+            reply.tools.add(ev.text);
             notifyListeners();
           case 'error':
             gotError = true;

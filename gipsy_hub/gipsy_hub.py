@@ -6,6 +6,9 @@ The Gipsy apps (iPhone + Windows) talk only to this hub. It does three jobs:
   2. /api/tts   - turns text into speech with Piper (deep British male voice)
   3. /api/stt   - turns recorded speech into text with faster-whisper
 
+Chat can also use tools (tools.py: news, web search, prices, EMAs, economic
+data) and a markets knowledge pack (knowledge.py + knowledge/*.md, RAG).
+
 Ollama itself stays private on 127.0.0.1:11434. Only this hub listens on the
 network (port 8765), so your phone reaches it over Wi-Fi or Tailscale.
 
@@ -23,6 +26,7 @@ import re
 import tempfile
 import urllib.request
 import wave
+from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional
 
@@ -30,6 +34,9 @@ import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
+
+from knowledge import KnowledgePack
+from tools import TOOLS, describe_call, run_tool
 
 HERE = Path(__file__).resolve().parent
 log = logging.getLogger("gipsy")
@@ -68,12 +75,33 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Used only when kaiju_song_path is empty.
     "kaiju_song_url": "",
     "kaiju_song_rate": 0.85,
+    # Let the model call tools (news, web search, prices, EMAs, FRED data).
+    "tools_enabled": True,
+    "max_tool_rounds": 4,
+    # Markets knowledge pack (knowledge/*.md) searched for every question.
+    "knowledge_enabled": True,
+    "embed_model": "nomic-embed-text",
+    "knowledge_results": 3,
+    # How close a section must be to count (embeddings, 0-1). Lower = more notes.
+    "knowledge_min_score": 0.55,
     "system_prompt": (
         "You are Gipsy, a friendly robot desk companion built by John. "
         "You run fully offline on John's own PC. You speak with calm, dry "
         "British wit. Keep answers short and conversational (one to four "
         "sentences) unless John asks for detail. Your replies may be read "
         "aloud, so avoid markdown tables, code blocks and emoji unless asked."
+    ),
+    # Added after system_prompt on every chat. {now} becomes the PC's date/time.
+    "tools_prompt": (
+        "It is now {now}. Your built-in knowledge stops well before today, so for "
+        "anything current (news, prices, 'today', 'latest', recent events, who holds "
+        "a job now) call a tool instead of guessing, and briefly say where the "
+        "information came from. If a tool fails, say so plainly. "
+        "You are also John's patient markets tutor: TradingView, chart reading, EMAs "
+        "and how gold, silver, bonds and yields, the dollar, crypto and housing relate. "
+        "Explain simply, use small examples, and check he understood. This is "
+        "education only: never tell John to buy or sell anything, never predict a "
+        "price, and mention that live quotes can be delayed."
     ),
 }
 
@@ -91,6 +119,7 @@ def load_config() -> dict[str, Any]:
 
 CFG = load_config()
 VOICES_DIR = HERE / "voices"
+KNOWLEDGE = KnowledgePack(HERE / "knowledge", CFG["ollama_url"], CFG.get("embed_model", "nomic-embed-text"))
 
 # ------------------------------------------------------------------ auth ----
 
@@ -101,7 +130,7 @@ def check_key(x_gipsy_key: Optional[str] = Header(default=None)) -> None:
         raise HTTPException(status_code=401, detail="Wrong or missing X-Gipsy-Key")
 
 
-app = FastAPI(title="Gipsy Hub", version="1.0")
+app = FastAPI(title="Gipsy Hub", version="1.1")
 
 # Lets the optional browser build of the app talk to the hub too.
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -275,46 +304,123 @@ def resolve_model(name: Optional[str]) -> str:
     return name
 
 
+def system_messages() -> list[dict[str, Any]]:
+    text = CFG["system_prompt"]
+    if CFG.get("tools_enabled", True) or CFG.get("knowledge_enabled", True):
+        now = datetime.now().astimezone().strftime("%A %d %B %Y, %I:%M %p %Z")
+        text += "\n\n" + CFG.get("tools_prompt", "").replace("{now}", now)
+    return [{"role": "system", "content": text}]
+
+
+async def knowledge_for(messages: list[dict[str, Any]]) -> tuple[Optional[str], list[str]]:
+    """RAG step: find lesson sections that match John's latest message."""
+    if not CFG.get("knowledge_enabled", True):
+        return None, []
+    users = [m["content"] for m in messages if m["role"] == "user"]
+    if not users:
+        return None, []
+    # Include the previous question too, so "and what about silver?" still works.
+    query = users[-1] if len(users) < 2 else users[-2][-200:] + "\n" + users[-1]
+    k = int(CFG.get("knowledge_results", 3))
+    cut = float(CFG["knowledge_min_score"]) if KNOWLEDGE.use_vectors else None
+    hits = await KNOWLEDGE.search(query, k=k, min_score=cut)
+    if not hits:
+        hits = await KNOWLEDGE.search(users[-1], k=k, min_score=cut)
+    if not hits:
+        return None, []
+    return KNOWLEDGE.as_context(hits), [c.title for _, c in hits]
+
+
 async def stream_ollama(body: ChatIn) -> AsyncIterator[bytes]:
     """Re-emit Ollama's stream as simple NDJSON events for the apps:
     {"type":"thinking","text":...} {"type":"token","text":...}
+    {"type":"tool","name":...,"text":...}  (a tool or the knowledge pack is in use)
     {"type":"done","model":...}    {"type":"error","text":...}
+
+    Tool loop: send the chat with the tool list. If the model answers with
+    tool calls instead of text, run them, append the results as "tool"
+    messages and ask again, up to max_tool_rounds times.
     """
     model = resolve_model(body.model)
     think = body.think if body.think is not None else (model == CFG["deep_model"])
-    payload = {
-        "model": model,
-        "messages": [{"role": "system", "content": CFG["system_prompt"]}]
-        + [m.model_dump() for m in body.messages[-30:]],
-        "stream": True,
-        "think": think,
-        "keep_alive": CFG["keep_alive"],
-        "options": {"num_ctx": CFG["context_length"]},
-    }
+    history = [m.model_dump() for m in body.messages[-30:]]
+    messages: list[dict[str, Any]] = system_messages()
 
     def ev(kind: str, **kw: Any) -> bytes:
         return (json.dumps({"type": kind, **kw}) + "\n").encode()
 
     yield ev("start", model=model, think=think)
+
+    try:
+        notes, titles = await knowledge_for(history)
+    except Exception as e:
+        log.warning("Knowledge search failed: %s", e)
+        notes, titles = None, []
+    if notes:
+        yield ev("tool", name="knowledge", text="Reading my notes: " + "; ".join(t.split(" > ")[-1] for t in titles))
+        messages += history[:-1] + [{"role": "system", "content": notes}] + history[-1:]
+    else:
+        messages += history
+
+    use_tools = bool(CFG.get("tools_enabled", True))
+    rounds = int(CFG.get("max_tool_rounds", 4))
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=5)) as client:
-            async with client.stream("POST", f"{CFG['ollama_url']}/api/chat", json=payload) as r:
-                if r.status_code != 200:
-                    msg = (await r.aread()).decode(errors="ignore")[:300]
-                    yield ev("error", text=f"Ollama said {r.status_code}: {msg}")
-                    return
-                async for line in r.aiter_lines():
-                    if not line.strip():
-                        continue
-                    chunk = json.loads(line)
-                    msg = chunk.get("message") or {}
-                    if msg.get("thinking"):
-                        yield ev("thinking", text=msg["thinking"])
-                    if msg.get("content"):
-                        yield ev("token", text=msg["content"])
-                    if chunk.get("done"):
-                        yield ev("done", model=model)
+            for round_no in range(rounds + 1):
+                payload: dict[str, Any] = {
+                    "model": model,
+                    "messages": messages,
+                    "stream": True,
+                    "think": think,
+                    "keep_alive": CFG["keep_alive"],
+                    "options": {"num_ctx": CFG["context_length"]},
+                }
+                # Last round: no tools, so the model has to answer in words.
+                if use_tools and round_no < rounds:
+                    payload["tools"] = TOOLS
+                calls: list[dict[str, Any]] = []
+                content = ""
+                async with client.stream("POST", f"{CFG['ollama_url']}/api/chat", json=payload) as r:
+                    if r.status_code != 200:
+                        msg = (await r.aread()).decode(errors="ignore")[:300]
+                        if "tools" in payload and "does not support tools" in msg:
+                            log.warning("%s can't use tools; answering without them", model)
+                            use_tools = False
+                            continue
+                        yield ev("error", text=f"Ollama said {r.status_code}: {msg}")
                         return
+                    async for line in r.aiter_lines():
+                        if not line.strip():
+                            continue
+                        chunk = json.loads(line)
+                        msg = chunk.get("message") or {}
+                        if msg.get("thinking"):
+                            yield ev("thinking", text=msg["thinking"])
+                        if msg.get("content"):
+                            content += msg["content"]
+                            yield ev("token", text=msg["content"])
+                        if msg.get("tool_calls"):
+                            calls += msg["tool_calls"]
+                        if chunk.get("done"):
+                            break
+                if not calls:
+                    yield ev("done", model=model)
+                    return
+                messages.append({"role": "assistant", "content": content, "tool_calls": calls})
+                for call in calls:
+                    fn = call.get("function") or {}
+                    name = fn.get("name", "")
+                    args = fn.get("arguments") or {}
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except ValueError:
+                            args = {}
+                    yield ev("tool", name=name, text=describe_call(name, args))
+                    log.info("Tool %s %s", name, args)
+                    result = await run_tool(name, args)
+                    messages.append({"role": "tool", "tool_name": name, "content": json.dumps(result, ensure_ascii=False)[:6000]})
+            yield ev("done", model=model)
     except httpx.ConnectError:
         yield ev("error", text="I can't reach Ollama on this PC. Is the Ollama app running?")
     except Exception as e:  # keep the app informed instead of hanging
@@ -349,6 +455,27 @@ async def kaiju_song() -> FileResponse:
     return FileResponse(song)
 
 
+# ------------------------------------------------- tools and knowledge ----
+
+
+@app.get("/api/knowledge/search", dependencies=[Depends(check_key)])
+async def knowledge_search(q: str, k: int = 3) -> dict[str, Any]:
+    """Try the RAG search yourself: /api/knowledge/search?q=what is a golden cross"""
+    hits = await KNOWLEDGE.search(q, k=k, min_score=0)
+    return {
+        "mode": "embeddings" if KNOWLEDGE.use_vectors else "keywords",
+        "results": [{"score": round(s, 3), "section": c.title, "text": c.text[:300]} for s, c in hits],
+    }
+
+
+@app.get("/api/tools/{name}", dependencies=[Depends(check_key)])
+async def tool_test(name: str, q: str = "") -> dict[str, Any]:
+    """Run one tool by hand, e.g. /api/tools/get_price?q=gold"""
+    first = {"search_news": "query", "web_search": "query", "get_price": "symbol",
+             "get_emas": "symbol", "get_economic": "series"}.get(name, "query")
+    return await run_tool(name, {first: q} if q else {})
+
+
 # ---------------------------------------------------------------- health ----
 
 
@@ -370,6 +497,9 @@ async def health() -> dict[str, Any]:
         "daily_model": CFG["daily_model"],
         "deep_model": CFG["deep_model"],
         "voice": CFG["voice"],
+        "tools": [t["function"]["name"] for t in TOOLS] if CFG.get("tools_enabled", True) else [],
+        "knowledge_sections": len(KNOWLEDGE.chunks),
+        "knowledge_mode": "embeddings" if KNOWLEDGE.use_vectors else "keywords",
     }
 
 
@@ -384,6 +514,8 @@ async def warm_up() -> None:
                 log.warning("Warm-up of %s failed: %s", fn.__name__, e)
 
     asyncio.create_task(_load())
+    if CFG.get("knowledge_enabled", True):
+        asyncio.create_task(KNOWLEDGE.build_index())
 
 
 if __name__ == "__main__":
