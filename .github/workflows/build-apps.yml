@@ -5,6 +5,11 @@ name: Build Gipsy apps
 
 on:
   workflow_dispatch:
+    inputs:
+      build_mac:
+        description: "Also build the Mac app (only if you own a Mac)"
+        type: boolean
+        default: false
   push:
     tags: ["v*"]
 
@@ -85,6 +90,7 @@ jobs:
   macos:
     # Waits for the iPhone build so only one Mac machine is needed at a time.
     needs: ios
+    if: ${{ inputs.build_mac }}
     runs-on: macos-latest
     defaults:
       run:
