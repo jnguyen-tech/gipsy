@@ -9,11 +9,16 @@ Where the data comes from
     List them in config.json under "calendars".
   * Tasks: a small to-do list kept on the PC in tasks.json. Add things by
     voice ("Hey Gipsy, add a task: chem lab report due Friday") or in the app.
-  * Market events: another module registers a source with
-    register_market_source(fn). fn(start: date, end: date) is async and returns
-    [{"date","time","title","kind","symbol"}].
+  * Calendar links can also be added from the app (Calendars button on the
+    This week screen). Those are kept in calendars.json on the PC and only
+    ever shown back masked, because anyone with an iCal link can read it.
+  * Market events: built in are US stock market holidays, 1 PM early closes
+    and monthly options expiry (quad witching in Mar/Jun/Sep/Dec), worked out
+    from the exchange's rules. Other modules add more (Fed, CPI, earnings)
+    with register_market_source(fn). fn(start: date, end: date) is async and
+    returns [{"date","time","title","kind","symbol"}].
 
-Everything is read-only except tasks.json. Nothing leaves the PC except the
+Everything is read-only except tasks.json and calendars.json. Nothing leaves the PC except the
 calendar downloads themselves.
 """
 
@@ -22,6 +27,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -35,10 +41,15 @@ import httpx
 log = logging.getLogger("gipsy.briefing")
 
 HERE = Path(__file__).resolve().parent
-TASKS_FILE = HERE / "tasks.json"
+# Next to this file, or GIPSY_DATA_DIR (/data in Docker) so it survives updates.
+DATA_DIR = Path(os.environ.get("GIPSY_DATA_DIR") or HERE)
+TASKS_FILE = DATA_DIR / "tasks.json"
+CALENDARS_FILE = DATA_DIR / "calendars.json"
+
+MarketSource = Callable[[date, date], Awaitable[list[dict[str, Any]]]]
 
 _cfg: dict[str, Any] = {}
-_market_source: Optional[Callable[[date, date], Awaitable[list[dict[str, Any]]]]] = None
+_market_sources: list[MarketSource] = []
 _ics_cache: dict[str, tuple[float, bytes]] = {}
 _tasks_lock = asyncio.Lock()
 
@@ -49,9 +60,10 @@ def init(cfg: dict[str, Any]) -> None:
     _cfg.update(cfg)
 
 
-def register_market_source(fn: Callable[[date, date], Awaitable[list[dict[str, Any]]]]) -> None:
-    global _market_source
-    _market_source = fn
+def register_market_source(fn: MarketSource) -> None:
+    """Add a source of market events. Several can be registered."""
+    if fn not in _market_sources:
+        _market_sources.append(fn)
 
 
 def tz() -> ZoneInfo:
@@ -190,7 +202,9 @@ def parse_ics(data: bytes, start: date, end: date, source: str, kind: str) -> li
     cal = icalendar.Calendar.from_ical(data)
     zone = tz()
     out = []
-    for ev in recurring_ical_events.of(cal).between(start, end + timedelta(days=1)):
+    for ev in recurring_ical_events.of(cal, skip_bad_series=True).between(start, end + timedelta(days=1)):
+        if str(ev.get("STATUS", "")).upper() == "CANCELLED":
+            continue
         dt = ev.decoded("DTSTART")
         if isinstance(dt, datetime):
             local = (dt if dt.tzinfo else dt.replace(tzinfo=zone)).astimezone(zone)
@@ -225,8 +239,171 @@ async def calendar_events(start: date, end: date) -> tuple[list[dict[str, Any]],
             log.warning("Calendar %s failed: %s", name, e)
             problems.append(f"Couldn't read the {name} calendar ({type(e).__name__})")
 
-    await asyncio.gather(*(one(c) for c in _cfg.get("calendars", []) if c.get("url")))
+    await asyncio.gather(*(one(c) for c in all_calendars()))
     return events, problems
+
+
+# ------------------------------------------- calendars linked from the app ---
+
+
+def _load_linked() -> list[dict[str, Any]]:
+    if not CALENDARS_FILE.exists():
+        return []
+    try:
+        rows = json.loads(CALENDARS_FILE.read_text(encoding="utf-8"))
+        return rows if isinstance(rows, list) else []
+    except (OSError, json.JSONDecodeError):
+        log.warning("calendars.json is unreadable; ignoring it")
+        return []
+
+
+def all_calendars() -> list[dict[str, Any]]:
+    """config.json "calendars" plus the ones linked from the app."""
+    cfg = [{**c, "from": "config"} for c in _cfg.get("calendars", []) if c.get("url")]
+    return cfg + [c for c in _load_linked() if c.get("url")]
+
+
+def mask_url(url: str) -> str:
+    """Enough to recognise a link, never enough to use it."""
+    m = re.match(r"^\w+://([^/]+)", url or "")
+    return f"{m[1]}/...{url[-4:]}" if m else "..."
+
+
+def public_calendar(c: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": c.get("id", ""),
+        "name": c.get("name") or "Calendar",
+        "kind": c.get("kind", "calendar"),
+        "url": mask_url(c.get("url", "")),
+        # Ones in config.json can only be removed by editing config.json.
+        "removable": c.get("from") != "config",
+    }
+
+
+async def link_calendar(name: str, url: str, kind: str = "calendar") -> dict[str, Any]:
+    """Save an iCal link, then try it so a bad link shows up straight away."""
+    url = re.sub(r"^webcals?://", "https://", (url or "").strip())
+    if not re.match(r"^https?://\S+$", url):
+        raise ValueError("Paste the calendar's iCal link (it starts with https:// or webcal://)")
+    row = {
+        "id": uuid.uuid4().hex[:8],
+        "name": (name or "").strip()[:60] or "Calendar",
+        "url": url,
+        "kind": kind if kind in ("school", "appointment", "calendar") else "calendar",
+    }
+    async with _tasks_lock:
+        rows = _load_linked()
+        rows.append(row)
+        CALENDARS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = CALENDARS_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+        tmp.replace(CALENDARS_FILE)
+    out = {**public_calendar(row), "ok": True, "error": ""}
+    try:
+        data = await _fetch_ics(url)
+        if b"BEGIN:VCALENDAR" not in data[:4000]:
+            raise ValueError("that link returned a web page, not a calendar")
+    except Exception as e:
+        out["ok"] = False
+        out["error"] = str(e) if isinstance(e, ValueError) else f"couldn't download it ({type(e).__name__})"
+    return out
+
+
+async def unlink_calendar(cal_id: str) -> bool:
+    async with _tasks_lock:
+        rows = _load_linked()
+        kept = [c for c in rows if c.get("id") != cal_id]
+        if len(kept) != len(rows):
+            tmp = CALENDARS_FILE.with_suffix(".tmp")
+            tmp.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+            tmp.replace(CALENDARS_FILE)
+    _ics_cache.clear()
+    return len(kept) != len(rows)
+
+
+# ------------------------------------------- built-in market calendar ------
+# Worked out from the NYSE's holiday rules, so it never goes out of date.
+
+
+def _easter(y: int) -> date:
+    """Anonymous Gregorian algorithm."""
+    a, b, c = y % 19, y // 100, y % 100
+    d, e = b // 4, b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = c // 4, c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7  # noqa: E741
+    m = (a + 11 * h + 22 * l) // 451
+    return date(y, (h + l - 7 * m + 114) // 31, ((h + l - 7 * m + 114) % 31) + 1)
+
+
+def _nth_weekday(y: int, month: int, weekday: int, n: int) -> date:
+    """n-th weekday (Mon=0) of a month; n=-1 for the last one."""
+    if n > 0:
+        d = date(y, month, 1)
+        return d + timedelta(days=(weekday - d.weekday()) % 7, weeks=n - 1)
+    d = date(y + (month == 12), month % 12 + 1, 1) - timedelta(days=1)
+    return d - timedelta(days=(d.weekday() - weekday) % 7)
+
+
+def _observed(d: date) -> date:
+    return d - timedelta(days=1) if d.weekday() == 5 else d + timedelta(days=1) if d.weekday() == 6 else d
+
+
+def market_holidays(y: int) -> dict[date, str]:
+    """Full-day US stock market closures."""
+    h: dict[date, str] = {}
+    if date(y, 1, 1).weekday() != 5:  # a Saturday New Year's Day isn't made up on Friday
+        h[_observed(date(y, 1, 1))] = "New Year's Day"
+    h[_nth_weekday(y, 1, 0, 3)] = "Martin Luther King Jr. Day"
+    h[_nth_weekday(y, 2, 0, 3)] = "Presidents' Day"
+    h[_easter(y) - timedelta(days=2)] = "Good Friday"
+    h[_nth_weekday(y, 5, 0, -1)] = "Memorial Day"
+    if y >= 2022:
+        h[_observed(date(y, 6, 19))] = "Juneteenth"
+    h[_observed(date(y, 7, 4))] = "Independence Day"
+    h[_nth_weekday(y, 9, 0, 1)] = "Labor Day"
+    h[_nth_weekday(y, 11, 3, 4)] = "Thanksgiving"
+    h[_observed(date(y, 12, 25))] = "Christmas"
+    return h
+
+
+def market_early_closes(y: int) -> dict[date, str]:
+    """1 PM Eastern early closes."""
+    hol = market_holidays(y)
+    out = {_nth_weekday(y, 11, 3, 4) + timedelta(days=1): "day after Thanksgiving"}
+    for d, why in ((date(y, 7, 3), "day before Independence Day"), (date(y, 12, 24), "Christmas Eve")):
+        if d.weekday() < 5 and d not in hol:
+            out[d] = why
+    return out
+
+
+async def builtin_market_events(start: date, end: date) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for y in range(start.year, end.year + 1):
+        hol = market_holidays(y)
+        for d, name in hol.items():
+            if start <= d <= end:
+                out.append({"date": d.isoformat(), "time": "", "title": f"US stock market closed: {name}",
+                            "kind": "holiday", "symbol": ""})
+        for d, name in market_early_closes(y).items():
+            if start <= d <= end:
+                # 1 PM Eastern is noon on John's Central-time clock; the title says ET.
+                out.append({"date": d.isoformat(), "time": "", "kind": "holiday", "symbol": "",
+                            "title": f"US stock market closes early at 1 PM ET ({name})"})
+        for mo in range(1, 13):
+            d = _nth_weekday(y, mo, 4, 3)  # third Friday
+            if d in hol:
+                d -= timedelta(days=1)  # expiry moves to Thursday
+            if start <= d <= end:
+                out.append({"date": d.isoformat(), "time": "", "kind": "options", "symbol": "",
+                            "title": "Quadruple witching: quarterly options and futures expire" if mo % 3 == 0
+                            else "Monthly options expiration"})
+    return out
+
+
+register_market_source(builtin_market_events)
 
 
 # ----------------------------------------------------------------- the week --
@@ -248,15 +425,22 @@ async def week_agenda(days: int = 7, start: str = "") -> dict[str, Any]:
             items.append({"date": t["due"], "time": "", "title": t["title"], "kind": t.get("kind", "task"),
                           "source": "To-do", "task_id": t["id"]})
 
-    if _market_source and _cfg.get("market_events_enabled", True):
-        try:
-            for ev in await _market_source(first, last):
-                items.append({**ev, "source": "Markets"})
-        except Exception as e:
-            log.warning("Market events failed: %s", e)
-            problems.append("Couldn't load market events")
+    if _cfg.get("market_events_enabled", True):
+        seen: set[tuple[str, str]] = set()
+        for source in _market_sources:
+            try:
+                for ev in await source(first, last):
+                    key = (ev.get("date", ""), (ev.get("title") or "").lower())
+                    if key in seen:  # two sources listing the same holiday
+                        continue
+                    seen.add(key)
+                    items.append({**ev, "source": "Markets"})
+            except Exception as e:
+                log.warning("Market events from %s failed: %s", getattr(source, "__name__", source), e)
+                problems.append("Couldn't load some market events")
 
-    order = {"appointment": 0, "school": 1, "task": 2, "calendar": 3, "fed": 4, "econ": 5, "earnings": 6}
+    order = {"holiday": -1, "appointment": 0, "school": 1, "task": 2, "calendar": 3, "fed": 4, "econ": 5,
+             "earnings": 6, "options": 7}
     items.sort(key=lambda i: (i["date"], i.get("time") or "99:99", order.get(i.get("kind", ""), 9), i["title"]))
     by_day = []
     for n in range(days):
@@ -273,7 +457,7 @@ async def week_agenda(days: int = 7, start: str = "") -> dict[str, Any]:
         "overdue": overdue,
         "undated": undated,
         "problems": problems,
-        "calendars": [c.get("name", "Calendar") for c in _cfg.get("calendars", []) if c.get("url")],
+        "calendars": [c.get("name", "Calendar") for c in all_calendars()],
     }
 
 
