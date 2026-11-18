@@ -1,15 +1,47 @@
-# Gipsy: apps for every device
+<p align="center">
+  <img src="docs/images/banner.png" alt="Gipsy: a local AI desk companion" width="100%">
+</p>
+
+<p align="center">
+  <b>A voice assistant that runs entirely on my own PC</b>, with native apps for Windows, iPhone, Android, Mac and Linux, and a 3D-printable desk robot to live in.
+</p>
+
+<p align="center">
+  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-apps-02569B?logo=flutter&logoColor=white">
+  <img alt="Python" src="https://img.shields.io/badge/Python-FastAPI-3776AB?logo=python&logoColor=white">
+  <img alt="Ollama" src="https://img.shields.io/badge/Ollama-Qwen3-000000?logo=ollama&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white">
+  <img alt="Runs locally" src="https://img.shields.io/badge/runs-100%25%20local-FFA31A">
+</p>
+
+<table>
+  <tr>
+    <td width="68%"><img src="docs/images/app-windows.png" alt="Gipsy on Windows: the helmet on the left, chat on the right"></td>
+    <td width="32%"><img src="docs/images/app-iphone.png" alt="Gipsy on iPhone"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Windows app</sub></td>
+    <td align="center"><sub>iPhone app</sub></td>
+  </tr>
+</table>
 
 Gipsy is a real installed app (not a website) that talks to the AI running on your own PC. One codebase builds for **Windows (desktop + laptop), iPhone, Android, Mac and Linux**.
 
-```
- iPhone app ─┐                       ┌─ Ollama (qwen3:8b daily / qwen3:14b deep)
-             ├─ Wi-Fi or Tailscale ─► Gipsy Hub (port 8765) ─┼─ Piper voice (deep British male)
- Windows app ┘                       └─ Whisper (speech to text)
+```mermaid
+flowchart LR
+    A[iPhone / Android] -- Wi-Fi or Tailscale --> H
+    B[Windows / Mac / Linux] -- Wi-Fi or Tailscale --> H
+    subgraph PC[My PC: RTX 3060]
+        H[Gipsy Hub<br/>FastAPI :8765] --> O[(Ollama<br/>qwen3:8b daily<br/>qwen3:14b deep)]
+        H --> P[Piper voice<br/>deep British male]
+        H --> W[Whisper<br/>speech to text]
+        H --> T[Tools + RAG<br/>news, prices, lessons]
+    end
 ```
 
-* **gipsy_app/** is one Flutter app that builds for both Windows and iPhone.
+* **gipsy_app/** is one Flutter app that builds for every platform.
 * **gipsy_hub/** is a small Python server on your PC. The apps only talk to the hub, and Ollama stays private.
+* **Run it two ways:** the simple Windows scripts below, or the whole stack in Docker with one command ([docs/DOCKER.md](docs/DOCKER.md)).
 * Everything is free, and everything runs on your hardware.
 
 ## What the app does
@@ -27,6 +59,8 @@ Gipsy is a real installed app (not a website) that talks to the AI running on yo
 
 ### Visor states
 
+![The five visor states: sleeping, idle, listening, thinking, speaking](docs/images/visor-states.png)
+
 | State | Look |
 |---|---|
 | Sleeping | Dark visor with a faint, slowly breathing standby line |
@@ -35,11 +69,46 @@ Gipsy is a real installed app (not a website) that talks to the AI running on yo
 | Thinking | A scanner light that sweeps side to side. The Reactor Core logo spins. |
 | Speaking | Equaliser bars that bounce in time with the actual audio |
 
+![Gipsy's three logos](docs/images/logos.png)
+
 Logos: the **Armored Visor** is the iPhone icon, the **Armored G** is the Windows icon and the in-app logo, and the **Reactor Core** spins while Gipsy is thinking.
+
+## The desk bot
+
+<table>
+  <tr>
+    <td><img src="docs/images/desk-bot-assembled.jpg" alt="Gipsy desk bot, assembled"></td>
+    <td><img src="docs/images/desk-bot-xray.jpg" alt="Gipsy desk bot in X-ray view, showing the electronics and cable route"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Assembled: 344 mm (13.5 in) on its plinth</sub></td>
+    <td align="center"><sub>X-ray: StackChan core in the head, cable route down to the plinth</sub></td>
+  </tr>
+</table>
+
+The physical Gipsy is an original armored desk robot wearing the same helmet as the app. The head holds a StackChan-style core (screen, mic, speaker) whose visor shows the same five states, with room for MG90S servos so the head and arms can move later. The body is meant to be printed by a print service.
 
 ---
 
-## Part 1: Set up Gipsy Hub on the PC (about 15 minutes, one time)
+## Option A: Run the AI stack in Docker (recommended)
+
+Each piece runs in its own container, so you can start, stop, update or wipe it without touching the rest of the PC. Ollama stays a normal Windows app so it keeps the GPU.
+
+```powershell
+copy .env.example .env
+docker compose up -d                   # Gipsy Hub + Open WebUI
+docker compose --profile home up -d    # ...plus Home Assistant
+```
+
+| Service | Address | What it is |
+|---|---|---|
+| Gipsy Hub | `http://<PC's Wi-Fi IP>:8765` | What the Gipsy apps connect to |
+| Open WebUI | http://localhost:3000 | ChatGPT-style page for every Ollama model |
+| Home Assistant | http://localhost:8123 | Optional, for the smart plug and lamp |
+
+The step-by-step guide for first-time Docker users (installing Docker Desktop, PowerShell commands, where your data lives, firewall, troubleshooting) is in **[docs/DOCKER.md](docs/DOCKER.md)**.
+
+## Option B: Set up Gipsy Hub on the PC without Docker (about 15 minutes, one time)
 
 1. Install **Python 3.12** from python.org. On the first screen, tick **"Add python.exe to PATH"**.
 2. Copy the `gipsy_hub` folder somewhere permanent, for example `D:\Gipsy\gipsy_hub`.
@@ -184,5 +253,11 @@ gipsy_hub/
   knowledge.py       the RAG search over knowledge/*.md
   knowledge/         markets lessons (TradingView, EMAs, gold/silver/bonds/crypto/housing)
   tests/             offline tests with a fake Ollama
+  Dockerfile         the hub's container image
 .github/workflows/build-apps.yml   free cloud builds for Windows + iPhone
+.github/workflows/hub-docker.yml   builds the hub image and runs its tests on every push
+docker-compose.yml   hub + Open WebUI (+ Home Assistant) in one command
+.env.example         settings for docker-compose (copy to .env)
+docs/DOCKER.md       beginner's guide to the Docker setup
+docs/images/         screenshots and renders used in this README
 ```

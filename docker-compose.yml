@@ -1,0 +1,81 @@
+# Gipsy's home AI stack. One command starts it all:
+#
+#   docker compose up -d                  hub + Open WebUI
+#   docker compose --profile home up -d   ...plus Home Assistant
+#
+# Ollama is not in here on purpose. It runs as the normal Windows app so it
+# gets the RTX 3060 with no extra setup, and the containers talk to it at
+# host.docker.internal:11434. Settings come from the .env file next to this
+# one (copy .env.example to .env). Full guide: docs/DOCKER.md
+
+name: gipsy
+
+services:
+  # The brain's front door: chat, voice, tools. The Gipsy apps connect here.
+  hub:
+    build: ./gipsy_hub
+    image: gipsy-hub:local
+    container_name: gipsy-hub
+    restart: unless-stopped
+    ports:
+      # Phones need to reach the hub, so it listens on your network.
+      # Your router keeps it off the internet; Tailscale covers away-from-home.
+      - "${HUB_BIND:-0.0.0.0}:${HUB_PORT:-8765}:8765"
+    environment:
+      GIPSY_OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      TZ: ${TZ:-America/Chicago}
+    extra_hosts:
+      # Makes host.docker.internal work on Linux too (Docker Desktop has it built in).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # config.json, voices and hub.log. Edit docker-data/hub/config.json in
+      # Notepad, then: docker compose restart hub
+      - ./docker-data/hub:/data
+      # Your own lessons: drop .md files in here and restart the hub.
+      - ./gipsy_hub/knowledge:/app/knowledge
+      # Optional kaiju battle song. Set "kaiju_song_path": "/music/your-song.mp3"
+      - ./docker-data/music:/music:ro
+      # Whisper speech model (about 150 MB, downloaded once).
+      - whisper-models:/models
+
+  # A ChatGPT-style web page for every model in Ollama. Handy for trying
+  # models side by side. Only this PC can open it unless you change WEBUI_BIND.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:${OPEN_WEBUI_TAG:-main}
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "${WEBUI_BIND:-127.0.0.1}:${WEBUI_PORT:-3000}:8080"
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      WEBUI_NAME: Gipsy
+      # Sign-in stays on. The first account you create becomes the admin.
+      WEBUI_AUTH: "True"
+      ENABLE_SIGNUP: ${WEBUI_ALLOW_SIGNUP:-True}
+      # Nothing phones home.
+      ANONYMIZED_TELEMETRY: "False"
+      DO_NOT_TRACK: "True"
+      SCARF_NO_ANALYTICS: "True"
+      ENABLE_OPENAI_API: "False"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - open-webui:/app/backend/data
+
+  # Later: smart plugs, lamp, Alexa. Off until you ask for it with
+  #   docker compose --profile home up -d
+  homeassistant:
+    profiles: ["home"]
+    image: ghcr.io/home-assistant/home-assistant:${HOME_ASSISTANT_TAG:-stable}
+    container_name: homeassistant
+    restart: unless-stopped
+    ports:
+      - "${HA_BIND:-0.0.0.0}:${HA_PORT:-8123}:8123"
+    environment:
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - ./docker-data/homeassistant:/config
+
+volumes:
+  whisper-models:
+  open-webui:

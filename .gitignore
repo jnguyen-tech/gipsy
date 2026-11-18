@@ -4,3 +4,5 @@ gipsy_hub/config.json
 gipsy_hub/hub.log
 __pycache__/
 gipsy_hub/knowledge/.index.json
+.env
+docker-data/

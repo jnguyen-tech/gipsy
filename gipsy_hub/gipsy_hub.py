@@ -39,6 +39,11 @@ from knowledge import KnowledgePack
 from tools import TOOLS, describe_call, run_tool
 
 HERE = Path(__file__).resolve().parent
+# Where config.json, downloaded voices and hub.log live. Next to this file by
+# default; the Docker image sets GIPSY_DATA_DIR=/data so they survive updates.
+DATA_DIR = Path(os.environ.get("GIPSY_DATA_DIR") or HERE)
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+IN_DOCKER = os.environ.get("GIPSY_IN_DOCKER") == "1"
 log = logging.getLogger("gipsy")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S")
 
@@ -49,7 +54,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "port": 8765,
     # Shared secret the apps send in the X-Gipsy-Key header. Empty = no check.
     "api_key": "",
-    "ollama_url": "http://127.0.0.1:11434",
+    # In Docker this comes from GIPSY_OLLAMA_URL (http://host.docker.internal:11434).
+    "ollama_url": os.environ.get("GIPSY_OLLAMA_URL") or "http://127.0.0.1:11434",
     "daily_model": "qwen3:8b",
     "deep_model": "qwen3:14b",
     "context_length": 16384,
@@ -108,7 +114,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 def load_config() -> dict[str, Any]:
     cfg = dict(DEFAULT_CONFIG)
-    path = HERE / "config.json"
+    path = DATA_DIR / "config.json"
     if path.exists():
         cfg.update(json.loads(path.read_text(encoding="utf-8")))
     else:
@@ -118,7 +124,7 @@ def load_config() -> dict[str, Any]:
 
 
 CFG = load_config()
-VOICES_DIR = HERE / "voices"
+VOICES_DIR = DATA_DIR / "voices"
 KNOWLEDGE = KnowledgePack(HERE / "knowledge", CFG["ollama_url"], CFG.get("embed_model", "nomic-embed-text"))
 
 # ------------------------------------------------------------------ auth ----
@@ -523,7 +529,7 @@ if __name__ == "__main__":
     import sys
 
     if sys.stdout is None:  # started hidden with pythonw: log to a file
-        sys.stdout = sys.stderr = open(HERE / "hub.log", "a", encoding="utf-8", buffering=1)
+        sys.stdout = sys.stderr = open(DATA_DIR / "hub.log", "a", encoding="utf-8", buffering=1)
         logging.getLogger().handlers[0].setStream(sys.stderr)
 
     import uvicorn
@@ -538,7 +544,13 @@ if __name__ == "__main__":
     print()
     print("  GIPSY HUB is starting")
     print(f"  On this PC:      http://127.0.0.1:{CFG['port']}")
-    print(f"  On your Wi-Fi:   http://{lan_ip}:{CFG['port']}")
+    if IN_DOCKER:
+        # Inside a container the address above is the container's own, so
+        # point at the PC instead (Docker forwards the port).
+        print("  On your Wi-Fi:   http://<this PC's Wi-Fi IP>:%d   (run ipconfig to see it)" % CFG["port"])
+    else:
+        print(f"  On your Wi-Fi:   http://{lan_ip}:{CFG['port']}")
     print("  On Tailscale:    http://<this PC's 100.x address>:%d" % CFG["port"])
+    print(f"  Ollama:          {CFG['ollama_url']}")
     print()
     uvicorn.run(app, host=CFG["host"], port=int(CFG["port"]), log_level="warning")
