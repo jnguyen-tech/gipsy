@@ -102,7 +102,12 @@ flutter_launcher_icons:
   image_path: "assets/icon/armored_visor_1024.png"
   ios: true
   remove_alpha_ios: true
-  android: false
+  android: "launcher_icon"
+  adaptive_icon_background: "#0A0F1C"
+  adaptive_icon_foreground: "assets/icon/armored_visor_1024.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/armored_g_1024.png"
   windows:
     generate: true
     image_path: "assets/icon/armored_g_1024.png"

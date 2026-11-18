@@ -1,6 +1,6 @@
-# Gipsy: apps for iPhone and Windows
+# Gipsy: apps for every device
 
-Gipsy is a real installed app (not a website) that talks to the AI running on your own PC.
+Gipsy is a real installed app (not a website) that talks to the AI running on your own PC. One codebase builds for **Windows (desktop + laptop), iPhone, Android, Mac and Linux**.
 
 ```
  iPhone app ─┐                       ┌─ Ollama (qwen3:8b daily / qwen3:14b deep)
@@ -69,7 +69,15 @@ The apps are compiled on GitHub's free cloud machines. That way you don't need a
 
 1. Put this folder in a GitHub repo (private is fine).
 2. Open the repo's **Actions** tab, choose **Build Gipsy apps**, and click **Run workflow**. A run takes about 10 to 15 minutes.
-3. Download the two files at the bottom of the finished run: **gipsy-windows** and **gipsy-ios-unsigned**.
+3. Download what you need from the bottom of the finished run:
+
+| Device | File | Install |
+|---|---|---|
+| Windows PC or laptop | gipsy-windows | Unzip and run `gipsy.exe` (see below) |
+| iPhone / iPad | gipsy-ios-unsigned | Sideloadly (see below) |
+| Android phone or tablet | gipsy-android | Open the `.apk` on the phone and allow "Install unknown apps" once. No re-signing. |
+| Mac | gipsy-mac | Unzip, drag to Applications, then right-click → Open the first time (it's unsigned) |
+| Linux | gipsy-linux | Extract and run `./gipsy` (needs `pulseaudio-utils` for the mic) |
 
 > A private repo gets 2,000 free Action minutes a month. Mac minutes count 10×, so each iPhone build uses about 100 of them. That's enough for roughly 15 iPhone builds a month. A public repo has no limit.
 
@@ -78,7 +86,9 @@ The apps are compiled on GitHub's free cloud machines. That way you don't need a
 1. Unzip `Gipsy-Windows.zip` to `D:\Gipsy\app`.
 2. Run `gipsy.exe`. If SmartScreen appears, click "More info" and then "Run anyway". This happens because the app isn't code-signed.
 3. Right-click it in the taskbar and choose **Pin to taskbar**.
-4. Open Settings (the sliders icon) and set Home Wi-Fi to `http://127.0.0.1:8765`.
+4. Open Settings (the sliders icon). On the PC that runs the hub, set Home Wi-Fi to `http://127.0.0.1:8765`.
+
+**On a laptop or any other device:** use the hub PC's Wi-Fi address (for example `http://192.168.1.50:8765`) as Home Wi-Fi, and its Tailscale address as the second one. Install Tailscale on that device too, so it works away from home. Every device talks to the same Gipsy on your PC.
 
 ### iPhone (free Apple ID, no developer account)
 
