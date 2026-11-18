@@ -28,7 +28,7 @@ from typing import Any, AsyncIterator, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 HERE = Path(__file__).resolve().parent
@@ -57,6 +57,14 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # more accurate. "cpu" keeps the GPU free for the LLM.
     "whisper_model": "base.en",
     "whisper_device": "cpu",
+    # "Hey Gipsy, there's a kaiju" easter egg. Gipsy says this line in its own
+    # voice, then plays your battle song. Point kaiju_song_path at an audio
+    # file you own (mp3/m4a/wav), e.g. D:\\Music\\battle-song.mp3.
+    # kaiju_song_rate < 1.0 slows it down (0.85 = slowed). Use 1.0 if your
+    # file is already a slowed version.
+    "kaiju_line": "Kaiju on the scanner. Suit up, John. Either we stop it here, or it stops us.",
+    "kaiju_song_path": "",
+    "kaiju_song_rate": 0.85,
     "system_prompt": (
         "You are Gipsy, a friendly robot desk companion built by John. "
         "You run fully offline on John's own PC. You speak with calm, dry "
@@ -313,6 +321,28 @@ async def stream_ollama(body: ChatIn) -> AsyncIterator[bytes]:
 @app.post("/api/chat", dependencies=[Depends(check_key)])
 async def chat(body: ChatIn) -> StreamingResponse:
     return StreamingResponse(stream_ollama(body), media_type="application/x-ndjson")
+
+
+# ------------------------------------------------------------- kaiju alert --
+
+
+@app.get("/api/kaiju", dependencies=[Depends(check_key)])
+async def kaiju() -> dict[str, Any]:
+    song = Path(CFG.get("kaiju_song_path") or "")
+    return {
+        "line": CFG.get("kaiju_line", ""),
+        "has_song": bool(CFG.get("kaiju_song_path")) and song.is_file(),
+        "song_ext": song.suffix.lower() or ".mp3",
+        "rate": float(CFG.get("kaiju_song_rate", 1.0)),
+    }
+
+
+@app.get("/api/kaiju/song", dependencies=[Depends(check_key)])
+async def kaiju_song() -> FileResponse:
+    song = Path(CFG.get("kaiju_song_path") or "")
+    if not song.is_file():
+        raise HTTPException(404, "Set kaiju_song_path in config.json to an audio file")
+    return FileResponse(song)
 
 
 # ---------------------------------------------------------------- health ----

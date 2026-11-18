@@ -25,11 +25,14 @@ class Visor extends StatefulWidget {
 }
 
 class _VisorState extends State<Visor> with TickerProviderStateMixin {
-  late final AnimationController _clock =
-      AnimationController(vsync: this, duration: const Duration(seconds: 60))..repeat();
+  late final AnimationController _clock = AnimationController(vsync: this, duration: const Duration(seconds: 60))
+    ..repeat();
   // Smooths the on/off of the visor so waking up looks like powering up.
   late final AnimationController _power = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 700), value: widget.mode == GipsyMode.sleeping ? 0 : 1);
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+    value: widget.mode == GipsyMode.sleeping ? 0 : 1,
+  );
   double _smoothLevel = 0;
 
   @override
@@ -83,51 +86,99 @@ class _HelmetPainter extends CustomPainter {
     final w = size.width, h = size.height;
     final cx = w / 2;
 
-    // ---------- helmet shell (an original design: dome + cheek plates) ----
+    // ---------- helmet shell: an original faceted design in slate armour ---
+    // Angular plates with lit top edges, like the armour in John's logo art.
     final shell = Path()
-      ..moveTo(cx, h * 0.02)
-      ..cubicTo(w * 0.80, h * 0.02, w * 0.90, h * 0.22, w * 0.90, h * 0.46)
-      ..lineTo(w * 0.86, h * 0.78)
+      ..moveTo(w * 0.36, h * 0.03)
+      ..lineTo(w * 0.64, h * 0.03)
+      ..lineTo(w * 0.84, h * 0.14)
+      ..lineTo(w * 0.91, h * 0.42)
+      ..lineTo(w * 0.86, h * 0.76)
       ..lineTo(w * 0.66, h * 0.97)
       ..lineTo(w * 0.34, h * 0.97)
-      ..lineTo(w * 0.14, h * 0.78)
-      ..lineTo(w * 0.10, h * 0.46)
-      ..cubicTo(w * 0.10, h * 0.22, w * 0.20, h * 0.02, cx, h * 0.02)
+      ..lineTo(w * 0.14, h * 0.76)
+      ..lineTo(w * 0.09, h * 0.42)
+      ..lineTo(w * 0.16, h * 0.14)
       ..close();
     final shellRect = Offset.zero & size;
     canvas.drawPath(
       shell,
       Paint()
         ..shader = const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color(0xFF3A4A6B), GipsyColors.navyPlate, Color(0xFF151D2E)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [GipsyColors.armorLight, GipsyColors.armor, GipsyColors.armorShadow],
         ).createShader(shellRect),
     );
-    canvas.drawPath(
-        shell,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = w * 0.012
-          ..color = const Color(0xFF5B6E94));
 
-    // crest ridge
-    final crest = Path()
-      ..moveTo(cx - w * 0.035, h * 0.04)
-      ..lineTo(cx + w * 0.035, h * 0.04)
-      ..lineTo(cx + w * 0.02, h * 0.30)
-      ..lineTo(cx - w * 0.02, h * 0.30)
+    // forehead plate (lighter facet) and cheek plates (darker facets)
+    final brow = Path()
+      ..moveTo(w * 0.36, h * 0.03)
+      ..lineTo(w * 0.64, h * 0.03)
+      ..lineTo(w * 0.84, h * 0.14)
+      ..lineTo(w * 0.88, h * 0.32)
+      ..lineTo(w * 0.12, h * 0.32)
+      ..lineTo(w * 0.16, h * 0.14)
       ..close();
-    canvas.drawPath(crest, Paint()..color = const Color(0xFF4C5E84));
+    canvas.drawPath(brow, Paint()..color = Colors.white.withValues(alpha: 0.05));
+    for (final side in [-1.0, 1.0]) {
+      final cheek = Path()
+        ..moveTo(w * (0.5 + side * 0.41), h * 0.62)
+        ..lineTo(w * (0.5 + side * 0.36), h * 0.76)
+        ..lineTo(w * (0.5 + side * 0.16), h * 0.80)
+        ..lineTo(w * (0.5 + side * 0.20), h * 0.64)
+        ..close();
+      canvas.drawPath(cheek, Paint()..color = Colors.black.withValues(alpha: 0.22));
+    }
+
+    // lit bevel along the top edges, darker rim below
+    canvas.drawPath(
+      shell,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.012
+        ..strokeJoin = StrokeJoin.bevel
+        ..color = GipsyColors.armorEdge,
+    );
+    final bevel = Path()
+      ..moveTo(w * 0.10, h * 0.42)
+      ..lineTo(w * 0.16, h * 0.14)
+      ..lineTo(w * 0.36, h * 0.03)
+      ..lineTo(w * 0.64, h * 0.03)
+      ..lineTo(w * 0.84, h * 0.14);
+    canvas.drawPath(
+      bevel,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.008
+        ..color = const Color(0xFFA9B2CC).withValues(alpha: 0.7),
+    );
+
+    // centre crest with a thin amber accent, like the stripes on the G logo
+    final crest = Path()
+      ..moveTo(cx - w * 0.05, h * 0.03)
+      ..lineTo(cx + w * 0.05, h * 0.03)
+      ..lineTo(cx + w * 0.03, h * 0.27)
+      ..lineTo(cx - w * 0.03, h * 0.27)
+      ..close();
+    canvas.drawPath(crest, Paint()..color = GipsyColors.armorLight);
+    canvas.drawLine(
+      Offset(cx, h * 0.06),
+      Offset(cx, h * 0.24),
+      Paint()
+        ..strokeWidth = w * 0.008
+        ..color = GipsyColors.amber.withValues(alpha: 0.25 + 0.6 * power),
+    );
 
     // panel lines
     final seam = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = w * 0.006
-      ..color = const Color(0xFF0E1422);
-    canvas.drawLine(Offset(w * 0.14, h * 0.66), Offset(w * 0.34, h * 0.80), seam);
-    canvas.drawLine(Offset(w * 0.86, h * 0.66), Offset(w * 0.66, h * 0.80), seam);
+      ..color = const Color(0xFF151A26);
+    canvas.drawLine(Offset(w * 0.12, h * 0.32), Offset(w * 0.88, h * 0.32), seam);
     canvas.drawLine(Offset(w * 0.34, h * 0.80), Offset(w * 0.66, h * 0.80), seam);
+    canvas.drawLine(Offset(w * 0.16, h * 0.14), Offset(w * 0.26, h * 0.32), seam);
+    canvas.drawLine(Offset(w * 0.84, h * 0.14), Offset(w * 0.74, h * 0.32), seam);
 
     // mouth grille
     for (var i = 0; i < 4; i++) {
@@ -138,15 +189,18 @@ class _HelmetPainter extends CustomPainter {
     // ear discs
     for (final side in [-1.0, 1.0]) {
       final c = Offset(cx + side * w * 0.47, h * 0.50);
-      canvas.drawCircle(c, w * 0.07, Paint()..color = const Color(0xFF2B3856));
+      canvas.drawCircle(c, w * 0.07, Paint()..color = GipsyColors.armorShadow);
       canvas.drawCircle(
-          c,
-          w * 0.07,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = w * 0.01
-            ..color = const Color(0xFF5B6E94));
-      final glow = mode == GipsyMode.sleeping ? 0.08 : 0.35 + 0.65 * power * (mode == GipsyMode.listening ? level : 0.3);
+        c,
+        w * 0.07,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = w * 0.01
+          ..color = GipsyColors.armorEdge,
+      );
+      final glow = mode == GipsyMode.sleeping
+          ? 0.08
+          : 0.35 + 0.65 * power * (mode == GipsyMode.listening ? level : 0.3);
       canvas.drawCircle(c, w * 0.025, Paint()..color = GipsyColors.amber.withValues(alpha: glow));
 
       if (mode == GipsyMode.listening) {
@@ -187,8 +241,11 @@ class _HelmetPainter extends CustomPainter {
       case GipsyMode.sleeping:
         // A barely-there line that breathes slowly, like a standby LED.
         final breathe = 0.10 + 0.08 * (0.5 + 0.5 * math.sin(t * 1.3));
-        _glowBar(canvas, Rect.fromCenter(center: vRect.center, width: vRect.width * 0.5, height: vRect.height * 0.08),
-            GipsyColors.navyGlow.withValues(alpha: breathe));
+        _glowBar(
+          canvas,
+          Rect.fromCenter(center: vRect.center, width: vRect.width * 0.5, height: vRect.height * 0.08),
+          GipsyColors.navyGlow.withValues(alpha: breathe),
+        );
         break;
 
       case GipsyMode.idle:
@@ -198,11 +255,13 @@ class _HelmetPainter extends CustomPainter {
         canvas.drawRect(
           vRect,
           Paint()
-            ..shader = LinearGradient(colors: [
-              Colors.white.withValues(alpha: 0),
-              Colors.white.withValues(alpha: 0.25 * power),
-              Colors.white.withValues(alpha: 0),
-            ]).createShader(Rect.fromLTWH(x - 30, vRect.top, 60, vRect.height)),
+            ..shader = LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0),
+                Colors.white.withValues(alpha: 0.25 * power),
+                Colors.white.withValues(alpha: 0),
+              ],
+            ).createShader(Rect.fromLTWH(x - 30, vRect.top, 60, vRect.height)),
         );
         break;
 
@@ -214,8 +273,7 @@ class _HelmetPainter extends CustomPainter {
         for (var i = 0; i <= 80; i++) {
           final f = i / 80;
           final env = math.sin(f * math.pi); // taper at the ends
-          final y = vRect.center.dy +
-              amp * env * (math.sin(f * 14 + t * 9) * 0.7 + math.sin(f * 31 - t * 13) * 0.3);
+          final y = vRect.center.dy + amp * env * (math.sin(f * 14 + t * 9) * 0.7 + math.sin(f * 31 - t * 13) * 0.3);
           final x = vRect.left + vRect.width * f;
           if (i == 0) {
             wave.moveTo(x, y);
@@ -224,18 +282,20 @@ class _HelmetPainter extends CustomPainter {
           }
         }
         canvas.drawPath(
-            wave,
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = w * 0.02
-              ..color = GipsyColors.amber.withValues(alpha: 0.6 * power)
-              ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4));
+          wave,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = w * 0.02
+            ..color = GipsyColors.amber.withValues(alpha: 0.6 * power)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        );
         canvas.drawPath(
-            wave,
-            Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = w * 0.008
-              ..color = GipsyColors.amberHot.withValues(alpha: power));
+          wave,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = w * 0.008
+            ..color = GipsyColors.amberHot.withValues(alpha: power),
+        );
         break;
 
       case GipsyMode.thinking:
@@ -254,7 +314,11 @@ class _HelmetPainter extends CustomPainter {
           );
         }
         final x = vRect.left + vRect.width * (0.08 + 0.84 * p);
-        canvas.drawCircle(Offset(x, vRect.center.dy), vRect.height * 0.22, Paint()..color = Colors.white.withValues(alpha: 0.9 * power));
+        canvas.drawCircle(
+          Offset(x, vRect.center.dy),
+          vRect.height * 0.22,
+          Paint()..color = Colors.white.withValues(alpha: 0.9 * power),
+        );
         break;
 
       case GipsyMode.speaking:
@@ -269,8 +333,10 @@ class _HelmetPainter extends CustomPainter {
           final bh = vRect.height * 0.92 * amp;
           final x = vRect.left + vRect.width * 0.1 + i * (vRect.width * 0.8 / (bars - 1));
           canvas.drawRRect(
-            RRect.fromRectAndRadius(Rect.fromCenter(center: Offset(x, vRect.center.dy), width: bw, height: bh),
-                Radius.circular(bw / 2)),
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(center: Offset(x, vRect.center.dy), width: bw, height: bh),
+              Radius.circular(bw / 2),
+            ),
             Paint()..color = Color.lerp(GipsyColors.amber, Colors.white, amp * 0.6)!.withValues(alpha: power),
           );
         }
@@ -302,11 +368,12 @@ class _HelmetPainter extends CustomPainter {
       );
     }
     canvas.drawPath(
-        visor,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = w * 0.01
-          ..color = const Color(0xFF6B7FA8));
+      visor,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.01
+        ..color = GipsyColors.armorEdge,
+    );
   }
 
   void _fill(Canvas canvas, Rect r, double a) {
@@ -325,10 +392,12 @@ class _HelmetPainter extends CustomPainter {
   }
 
   void _glowBar(Canvas canvas, Rect r, Color c) {
-    canvas.drawRRect(RRect.fromRectAndRadius(r, Radius.circular(r.height)),
-        Paint()
-          ..color = c
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(r, Radius.circular(r.height)),
+      Paint()
+        ..color = c
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
   }
 
   @override
@@ -345,8 +414,7 @@ class ReactorSpinner extends StatefulWidget {
 }
 
 class _ReactorSpinnerState extends State<ReactorSpinner> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 2))
-    ..repeat();
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
   @override
   void dispose() {
     _c.dispose();
@@ -364,11 +432,15 @@ class _ReactorSpinnerState extends State<ReactorSpinner> with SingleTickerProvid
       builder: (_, child) => Transform.rotate(
         angle: _c.value * 2 * math.pi,
         child: Container(
-          decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [
-            BoxShadow(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
                 color: GipsyColors.amber.withValues(alpha: 0.35 + 0.3 * math.sin(_c.value * 2 * math.pi).abs()),
-                blurRadius: widget.size * 0.6),
-          ]),
+                blurRadius: widget.size * 0.6,
+              ),
+            ],
+          ),
           child: child,
         ),
       ),

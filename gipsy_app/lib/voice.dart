@@ -72,8 +72,7 @@ class Ears {
       if (speechStart == null && now.difference(started) > waitForSpeech) {
         _finish(null);
       } else if (speechStart != null &&
-          (now.difference(lastLoud) > endSilence ||
-              now.difference(speechStart!) > maxPhrase)) {
+          (now.difference(lastLoud) > endSilence || now.difference(speechStart!) > maxPhrase)) {
         // Ignore tiny clicks shorter than ~0.3 s.
         final spoke = lastLoud.difference(speechStart!) > const Duration(milliseconds: 300);
         _finish(spoke ? path : null);
@@ -112,9 +111,7 @@ class Ears {
 class Mouth {
   Mouth() {
     // iOS: play through the loud speaker even right after recording.
-    AudioPlayer.global.setAudioContext(
-      AudioContextConfig(route: AudioContextConfigRoute.speaker).build(),
-    );
+    AudioPlayer.global.setAudioContext(AudioContextConfig(route: AudioContextConfigRoute.speaker).build());
     _player.onPositionChanged.listen((p) {
       final env = _env;
       if (env == null || env.isEmpty) return;
@@ -180,7 +177,48 @@ class Mouth {
     _next();
   }
 
+  Timer? _musicPulse;
+
+  /// Plays a music file (the kaiju battle song) at [rate] (0.85 = slowed).
+  /// The visor bounces to a steady beat while it plays.
+  Future<void> playMusic(Uint8List bytes, String ext, {double rate = 1.0}) async {
+    await finished;
+    final dir = await getTemporaryDirectory();
+    final f = File('${dir.path}${Platform.pathSeparator}gipsy_song$ext');
+    await f.writeAsBytes(bytes, flush: true);
+    final done = Completer<void>();
+    final sub = _player.onPlayerComplete.listen((_) {
+      if (!done.isCompleted) done.complete();
+    });
+    _allDone ??= Completer<void>();
+    speaking.value = true;
+    _env = null;
+    final start = DateTime.now();
+    _musicPulse = Timer.periodic(const Duration(milliseconds: 40), (_) {
+      final ms = DateTime.now().difference(start).inMilliseconds;
+      final beat = (ms * rate / 500) % 1.0; // ~120 bpm, slowed with the song
+      level.value = 0.35 + 0.65 * math.pow(1 - beat, 3).toDouble();
+    });
+    try {
+      await _player.setPlaybackRate(rate);
+      await _player.play(DeviceFileSource(f.path));
+      await done.future;
+    } catch (e) {
+      debugPrint('Music failed: $e');
+    } finally {
+      _musicPulse?.cancel();
+      await sub.cancel();
+      await _player.setPlaybackRate(1.0);
+      speaking.value = false;
+      level.value = 0;
+      final c = _allDone;
+      _allDone = null;
+      c?.complete();
+    }
+  }
+
   Future<void> stop() async {
+    _musicPulse?.cancel();
     _queue.clear();
     await _player.stop();
     _playing = false;
@@ -242,6 +280,9 @@ final RegExp wakePhrase = RegExp(
   r"^\W*(?:(?:hey|hay|hi|okay|ok|a)\W+)?(?:gipsy|gypsy|jipsy|gipsey|gypsie|gipsie|jipsey|gypsey|gipsy's|gypsy's)\b[\W]*",
   caseSensitive: false,
 );
+
+/// "there's a kaiju", "kaiju alert", and Whisper's usual misspellings.
+final RegExp kaijuPhrase = RegExp(r"\b(kaiju|kai-ju|kai ju|kyju|kaijus)\b", caseSensitive: false);
 
 /// If [heard] starts with the wake phrase, returns whatever came after it
 /// ("" if nothing). Returns null if there was no wake phrase.

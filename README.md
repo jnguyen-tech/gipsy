@@ -22,6 +22,7 @@ Gipsy is a real installed app (not a website) that talks to the AI running on yo
 | "Hey Gipsy" | While the app is open, Gipsy sleeps with its visor dark. Say "Hey Gipsy" and the visor turns orange. "Hey Gipsy, what's 12 times 9?" works in one go. |
 | Conversation mode | After answering, Gipsy listens for a follow-up. If you stay quiet it goes back to sleep. |
 | Brains | Use the bolt menu (top left) to switch between **Daily** (qwen3:8b, fast) and **Deep** (qwen3:14b, which thinks first). Any other model in Ollama shows up there too. |
+| Kaiju alert | Say **"Hey Gipsy, there's a kaiju"**. The visor goes to battle mode, Gipsy says its battle line, then plays your battle song (slowed). Tap the visor to stop it. |
 | Home and away | The app tries your home Wi-Fi address first, then your Tailscale address. |
 
 ### Visor states
@@ -55,6 +56,13 @@ Logos: the **Armored Visor** is the iPhone icon, the **Armored G** is the Window
    ```
 6. **Tailscale** (for use away from home): install Tailscale on the PC and the iPhone and sign in with the same account. In the Tailscale tray icon, copy the PC's `100.x.y.z` address. In the app, enter it as `http://100.x.y.z:8765`.
 7. **Optional:** to start the hub automatically at login, press Win+R, type `shell:startup`, and put a shortcut to `start_hub_hidden.vbs` in that folder. Its log goes to `hub.log`.
+
+**Kaiju alert song:** the song isn't included in the code, because the repo is public. Put an audio file you own on the PC, for example `D:\\Music\\battle-song.mp3`, and set it in `config.json`:
+```json
+"kaiju_song_path": "D:\\Music\\battle-song.mp3",
+"kaiju_song_rate": 0.85
+```
+`0.85` plays it slowed. Use `1.0` if your file is already a slowed version. You can change what Gipsy says with `kaiju_line`. Restart the hub after editing.
 
 **Settings** live in `gipsy_hub/config.json`, which is created on the first run:
 * `voice_pitch`: 0.90 by default. Lower is deeper. 0.85 is a big mech, 1.0 is natural.

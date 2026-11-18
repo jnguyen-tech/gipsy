@@ -196,6 +196,11 @@ class GipsyBrain extends ChangeNotifier {
     final gen = ++_generation;
     _busy = true;
 
+    if (kaijuPhrase.hasMatch(text)) {
+      await _kaijuAlert(text, gen);
+      return;
+    }
+
     lines.add(ChatLine('user', text));
     final reply = ChatLine('assistant', '');
     lines.add(reply);
@@ -275,6 +280,48 @@ class GipsyBrain extends ChangeNotifier {
     } else {
       _scheduleSleep();
     }
+  }
+
+  /// "Hey Gipsy, there's a kaiju": battle line in Gipsy's voice, then the
+  /// battle song from the PC. Tap the visor to stop it.
+  Future<void> _kaijuAlert(String text, int gen) async {
+    lines.add(ChatLine('user', text));
+    final reply = ChatLine('assistant', '');
+    lines.add(reply);
+    _setMode(GipsyMode.thinking);
+    try {
+      final info = await hub.kaijuInfo();
+      final line = (info['line'] as String?) ?? 'Kaiju sighted. Suit up.';
+      reply.text = '⚠ KAIJU ALERT\n$line';
+      notifyListeners();
+      if (settings.voiceReplies) {
+        final wav = await hub.speak(line);
+        if (gen != _generation) return;
+        mouth.enqueue(wav);
+        _setMode(GipsyMode.speaking);
+      }
+      if (info['has_song'] == true) {
+        final song = await hub.kaijuSong();
+        if (gen != _generation) return;
+        _setMode(GipsyMode.speaking);
+        await mouth.playMusic(
+          song,
+          (info['song_ext'] as String?) ?? '.mp3',
+          rate: (info['rate'] as num?)?.toDouble() ?? 1.0,
+        );
+      } else {
+        reply.text += '\n(No battle song set yet. Add kaiju_song_path to the hub\'s config.json.)';
+        notifyListeners();
+        await mouth.finished;
+      }
+    } catch (e) {
+      reply.text = e.toString();
+      notifyListeners();
+    }
+    if (gen != _generation) return;
+    _busy = false;
+    _setMode(GipsyMode.idle);
+    _scheduleSleep();
   }
 
   /// Stop talking/thinking right now.

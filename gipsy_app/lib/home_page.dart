@@ -38,8 +38,11 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
-        _scroll.animateTo(_scroll.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200), curve: Curves.easeOut);
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
       }
     });
   }
@@ -51,14 +54,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   String get _modeLabel => switch (brain.mode) {
-        GipsyMode.sleeping => brain.settings.wakeWord && brain.micAllowed
-            ? 'Sleeping · say "Hey Gipsy" or tap'
-            : 'Sleeping · tap to wake',
-        GipsyMode.idle => 'Awake',
-        GipsyMode.listening => 'Listening...',
-        GipsyMode.thinking => 'Thinking...',
-        GipsyMode.speaking => 'Speaking',
-      };
+    GipsyMode.sleeping =>
+      brain.settings.wakeWord && brain.micAllowed ? 'Sleeping · say "Hey Gipsy" or tap' : 'Sleeping · tap to wake',
+    GipsyMode.idle => 'Awake',
+    GipsyMode.listening => 'Listening...',
+    GipsyMode.thinking => 'Thinking...',
+    GipsyMode.speaking => 'Speaking',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -66,42 +68,72 @@ class _HomePageState extends State<HomePage> {
     final head = _HeadPanel(brain: brain, modeLabel: _modeLabel);
     final chat = _ChatPanel(brain: brain, scroll: _scroll, input: _input, onSend: _send);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Row(mainAxisSize: MainAxisSize.min, children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: Image.asset('assets/brand/armored_g.png', width: 26, height: 26),
+    return GipsyBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset('assets/brand/armored_g.png', width: 26, height: 26),
+              ),
+              const SizedBox(width: 10),
+              const Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'GIPSY',
+                    style: TextStyle(
+                      letterSpacing: 5,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 20,
+                      color: GipsyColors.steelBright,
+                      height: 1,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  TrackedLabel('Local AI Assistant', size: 8.5),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          const Text('GIPSY', style: TextStyle(letterSpacing: 6, fontWeight: FontWeight.w700)),
-        ]),
-        leading: _ModelMenu(brain: brain),
-        leadingWidth: 64,
-        actions: [
-          IconButton(
-            tooltip: 'Go to sleep',
-            icon: const Icon(Icons.bedtime_outlined),
-            onPressed: brain.sleepNow,
-          ),
-          IconButton(
-            tooltip: 'Settings',
-            icon: const Icon(Icons.tune),
-            onPressed: () async {
-              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage(brain: brain)));
-              await brain.settingsChanged();
-            },
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: wide
-            ? Row(children: [
-                SizedBox(width: 380, child: head),
-                const VerticalDivider(width: 1, color: GipsyColors.navy),
-                Expanded(child: chat),
-              ])
-            : Column(children: [head, Expanded(child: chat)]),
+          leading: _ModelMenu(brain: brain),
+          leadingWidth: 64,
+          actions: [
+            IconButton(tooltip: 'Go to sleep', icon: const Icon(Icons.bedtime_outlined), onPressed: brain.sleepNow),
+            IconButton(
+              tooltip: 'Settings',
+              icon: const Icon(Icons.tune),
+              onPressed: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SettingsPage(brain: brain)));
+                await brain.settingsChanged();
+              },
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: wide
+              ? Row(
+                  children: [
+                    SizedBox(width: 380, child: head),
+                    Container(
+                      width: 1,
+                      margin: const EdgeInsets.symmetric(vertical: 24),
+                      color: GipsyColors.armorShadow,
+                    ),
+                    Expanded(child: chat),
+                  ],
+                )
+              : Column(
+                  children: [
+                    head,
+                    Expanded(child: chat),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -119,40 +151,70 @@ class _HeadPanel extends StatelessWidget {
     final online = brain.hubInfo?.ollamaUp == true;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      child: Column(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.center, children: [
-        GestureDetector(
-          onTap: () {
-            if (brain.mode == GipsyMode.speaking || brain.mode == GipsyMode.thinking) {
-              brain.cancel();
-            } else {
-              brain.wakeAndListen();
-            }
-          },
-          child: Visor(mode: brain.mode, level: brain.visorLevel, size: visorSize),
-        ),
-        const SizedBox(height: 10),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          ReactorSpinner(size: 22, active: brain.mode == GipsyMode.thinking),
-          const SizedBox(width: 8),
-          Text(modeLabel,
-              style: TextStyle(
-                  color: brain.mode == GipsyMode.sleeping ? GipsyColors.steel : GipsyColors.amber,
-                  fontWeight: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 4),
-        InkWell(
-          onTap: brain.reconnect,
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.circle, size: 9, color: online ? Colors.greenAccent : Colors.redAccent),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(brain.status,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: GipsyColors.steel, fontSize: 12)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GestureDetector(
+            onTap: () {
+              if (brain.mode == GipsyMode.speaking || brain.mode == GipsyMode.thinking) {
+                brain.cancel();
+              } else {
+                brain.wakeAndListen();
+              }
+            },
+            child: Visor(mode: brain.mode, level: brain.visorLevel, size: visorSize),
+          ),
+          const SizedBox(height: 12),
+          ChamferPanel(
+            accent: true,
+            cut: 10,
+            padding: const EdgeInsets.fromLTRB(14, 10, 16, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ReactorSpinner(size: 24, active: brain.mode == GipsyMode.thinking),
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        modeLabel.toUpperCase(),
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          letterSpacing: 1.6,
+                          fontSize: 13,
+                          color: brain.mode == GipsyMode.sleeping ? GipsyColors.steel : GipsyColors.amber,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                InkWell(
+                  onTap: brain.reconnect,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.circle, size: 8, color: online ? const Color(0xFF5EE6A0) : const Color(0xFFFF5D5D)),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          brain.status,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: GipsyColors.steel, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ]),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -172,8 +234,10 @@ class _ModelMenu extends StatelessWidget {
       tooltip: 'Choose brain',
       initialValue: current,
       onSelected: brain.setModel,
-      icon: Icon(current == 'deep' ? Icons.psychology : Icons.bolt,
-          color: current == 'deep' ? GipsyColors.amberHot : GipsyColors.amber),
+      icon: Icon(
+        current == 'deep' ? Icons.psychology : Icons.bolt,
+        color: current == 'deep' ? GipsyColors.amberHot : GipsyColors.amber,
+      ),
       itemBuilder: (_) => [
         PopupMenuItem(
           value: 'daily',
@@ -207,56 +271,69 @@ class _ChatPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(children: [
-      Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(children: [
-          Text(brain.modelLabel, style: const TextStyle(color: GipsyColors.steel, fontSize: 12)),
-          const Spacer(),
-          if (brain.lines.isNotEmpty)
-            TextButton(onPressed: brain.clearChat, child: const Text('New chat')),
-        ]),
-      ),
-      Expanded(
-        child: brain.lines.isEmpty
-            ? const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Text('Say "Hey Gipsy", tap the visor, or type below.',
-                      textAlign: TextAlign.center, style: TextStyle(color: GipsyColors.steel)),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              TrackedLabel(brain.modelLabel, size: 10),
+              const Spacer(),
+              if (brain.lines.isNotEmpty) TextButton(onPressed: brain.clearChat, child: const Text('New chat')),
+            ],
+          ),
+        ),
+        Expanded(
+          child: brain.lines.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'Say "Hey Gipsy", tap the visor, or type below.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: GipsyColors.steel),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  controller: scroll,
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                  itemCount: brain.lines.length,
+                  itemBuilder: (_, i) => _Bubble(line: brain.lines[i], showThinking: brain.settings.showThinking),
                 ),
-              )
-            : ListView.builder(
-                controller: scroll,
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-                itemCount: brain.lines.length,
-                itemBuilder: (_, i) => _Bubble(line: brain.lines[i], showThinking: brain.settings.showThinking),
-              ),
-      ),
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-        child: Row(children: [
-          Expanded(
-            child: TextField(
-              controller: input,
-              minLines: 1,
-              maxLines: 5,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => onSend(),
-              decoration: const InputDecoration(hintText: 'Message Gipsy'),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+          child: ChamferPanel(
+            fill: GipsyColors.navyRaised,
+            padding: const EdgeInsets.fromLTRB(4, 4, 6, 4),
+            cut: 14,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: input,
+                    minLines: 1,
+                    maxLines: 5,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => onSend(),
+                    decoration: const InputDecoration(hintText: 'Message Gipsy'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  tooltip: 'Talk',
+                  onPressed: brain.mode == GipsyMode.listening ? brain.cancel : brain.wakeAndListen,
+                  icon: Icon(brain.mode == GipsyMode.listening ? Icons.stop : Icons.mic),
+                ),
+                const SizedBox(width: 4),
+                IconButton.filledTonal(tooltip: 'Send', onPressed: onSend, icon: const Icon(Icons.arrow_upward)),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          IconButton.filled(
-            tooltip: 'Talk',
-            onPressed: brain.mode == GipsyMode.listening ? brain.cancel : brain.wakeAndListen,
-            icon: Icon(brain.mode == GipsyMode.listening ? Icons.stop : Icons.mic),
-          ),
-          const SizedBox(width: 4),
-          IconButton.filledTonal(tooltip: 'Send', onPressed: onSend, icon: const Icon(Icons.arrow_upward)),
-        ]),
-      ),
-    ]);
+        ),
+      ],
+    );
   }
 }
 
@@ -270,8 +347,11 @@ class _Bubble extends StatelessWidget {
     if (line.role == 'system') {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Text(line.text,
-            textAlign: TextAlign.center, style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+        child: Text(
+          line.text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.orangeAccent, fontSize: 12),
+        ),
       );
     }
     final user = line.isUser;
@@ -279,35 +359,41 @@ class _Bubble extends StatelessWidget {
       alignment: user ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 620),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: user ? GipsyColors.amberDeep.withValues(alpha: 0.85) : GipsyColors.navy,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(user ? 16 : 4),
-              bottomRight: Radius.circular(user ? 4 : 16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: ChamferPanel(
+            cut: 10,
+            cutTopLeft: !user,
+            cutBottomRight: user,
+            accent: !user,
+            fill: user ? const Color(0xFF3A230C) : GipsyColors.navy,
+            border: user ? GipsyColors.amberDeep : GipsyColors.armorEdge,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (!user && showThinking && line.thinking.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(
+                      line.thinking.trim(),
+                      style: const TextStyle(color: GipsyColors.steel, fontSize: 12, fontStyle: FontStyle.italic),
+                    ),
+                  ),
+                if (!user && line.text.isEmpty)
+                  const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ReactorSpinner(size: 18),
+                      SizedBox(width: 8),
+                      Text('...', style: TextStyle(color: GipsyColors.steel)),
+                    ],
+                  )
+                else
+                  SelectableText(line.text, style: const TextStyle(height: 1.35)),
+              ],
             ),
-            border: user ? null : Border.all(color: GipsyColors.navyPlate),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (!user && showThinking && line.thinking.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Text(line.thinking.trim(),
-                    style: const TextStyle(color: GipsyColors.steel, fontSize: 12, fontStyle: FontStyle.italic)),
-              ),
-            if (!user && line.text.isEmpty)
-              const Row(mainAxisSize: MainAxisSize.min, children: [
-                ReactorSpinner(size: 18),
-                SizedBox(width: 8),
-                Text('...', style: TextStyle(color: GipsyColors.steel)),
-              ])
-            else
-              SelectableText(line.text, style: const TextStyle(height: 1.35)),
-          ]),
         ),
       ),
     );

@@ -27,4 +27,10 @@ void main() {
     out.add(sp.flush());
     expect(out, ['Hello John. Ok.', 'Systems are all nominal today!', 'Bye']);
   });
+
+  test('kaiju alert phrase', () {
+    expect(kaijuPhrase.hasMatch(afterWakePhrase("Hey Gipsy, there's a kaiju!")!), isTrue);
+    expect(kaijuPhrase.hasMatch('Kaiju alert'), isTrue);
+    expect(kaijuPhrase.hasMatch("what's the weather"), isFalse);
+  });
 }

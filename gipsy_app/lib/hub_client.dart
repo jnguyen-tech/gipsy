@@ -33,17 +33,13 @@ class HubClient {
   String? _activeUrl;
   String? get activeUrl => _activeUrl;
 
-  Map<String, String> get _headers => {
-        if (settings.apiKey.trim().isNotEmpty) 'X-Gipsy-Key': settings.apiKey.trim(),
-      };
+  Map<String, String> get _headers => {if (settings.apiKey.trim().isNotEmpty) 'X-Gipsy-Key': settings.apiKey.trim()};
 
   /// Finds a hub address that answers. Returns null if none do.
   Future<HubInfo?> connect() async {
     for (final url in settings.candidateUrls) {
       try {
-        final r = await _http
-            .get(Uri.parse('$url/api/health'), headers: _headers)
-            .timeout(const Duration(seconds: 3));
+        final r = await _http.get(Uri.parse('$url/api/health'), headers: _headers).timeout(const Duration(seconds: 3));
         if (r.statusCode == 200) {
           _activeUrl = url;
           return HubInfo(url, jsonDecode(r.body) as Map<String, dynamic>);
@@ -88,12 +84,10 @@ class HubClient {
       yield ChatEvent('error', 'Hub error ${res.statusCode}');
       return;
     }
-    await for (final line
-        in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
+    await for (final line in res.stream.transform(utf8.decoder).transform(const LineSplitter())) {
       if (line.trim().isEmpty) continue;
       final j = jsonDecode(line) as Map<String, dynamic>;
-      yield ChatEvent(j['type'] as String, (j['text'] as String?) ?? '',
-          model: j['model'] as String?);
+      yield ChatEvent(j['type'] as String, (j['text'] as String?) ?? '', model: j['model'] as String?);
     }
   }
 
@@ -101,9 +95,11 @@ class HubClient {
   Future<Uint8List> speak(String text) async {
     final base = await _base();
     final r = await _http
-        .post(Uri.parse('$base/api/tts'),
-            headers: {..._headers, 'Content-Type': 'application/json'},
-            body: jsonEncode({'text': text}))
+        .post(
+          Uri.parse('$base/api/tts'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({'text': text}),
+        )
         .timeout(const Duration(seconds: 60));
     if (r.statusCode != 200) throw HubException('Voice failed (${r.statusCode})');
     return r.bodyBytes;
@@ -115,10 +111,27 @@ class HubClient {
     final req = http.MultipartRequest('POST', Uri.parse('$base/api/stt'))
       ..headers.addAll(_headers)
       ..files.add(await http.MultipartFile.fromPath('audio', wavPath, filename: 'clip.wav'));
-    final res = await http.Response.fromStream(
-        await _http.send(req).timeout(const Duration(seconds: 60)));
+    final res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 60)));
     if (res.statusCode != 200) throw HubException('Hearing failed (${res.statusCode})');
     return ((jsonDecode(res.body) as Map)['text'] as String? ?? '').trim();
+  }
+
+  /// Kaiju alert settings: {line, has_song, song_ext, rate}.
+  Future<Map<String, dynamic>> kaijuInfo() async {
+    final base = await _base();
+    final r = await _http.get(Uri.parse('$base/api/kaiju'), headers: _headers).timeout(const Duration(seconds: 5));
+    if (r.statusCode != 200) throw HubException('Kaiju alert failed (${r.statusCode})');
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// Downloads the battle song chosen in the hub's config.json.
+  Future<Uint8List> kaijuSong() async {
+    final base = await _base();
+    final r = await _http
+        .get(Uri.parse('$base/api/kaiju/song'), headers: _headers)
+        .timeout(const Duration(seconds: 60));
+    if (r.statusCode != 200) throw HubException('No battle song (${r.statusCode})');
+    return r.bodyBytes;
   }
 }
 
