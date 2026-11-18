@@ -8,6 +8,11 @@ on:
   push:
     tags: ["v*"]
 
+# A newer run replaces an older one, so Mac jobs don't pile up in the queue.
+concurrency:
+  group: build-apps
+  cancel-in-progress: true
+
 jobs:
   windows:
     runs-on: windows-latest

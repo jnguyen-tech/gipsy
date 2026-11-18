@@ -86,136 +86,187 @@ class _HelmetPainter extends CustomPainter {
     final w = size.width, h = size.height;
     final cx = w / 2;
 
-    // ---------- helmet: an ORIGINAL rounded chibi design -------------------
-    // Big rounded dome, wraparound visor band and a collar ring. Colours are
-    // the navy/slate + amber of John's logos. Deliberately not a copy of any
-    // film or toy design: no centre stripe, no numbers, its own visor shape.
+    // ---------- helmet: an ORIGINAL angular battle-mech design -------------
+    // Heavy armour plates, an overhanging brow, swept-back fins and a narrow
+    // visor slit. Navy/slate + amber from John's logos. Not a copy of any film
+    // or toy design: own silhouette, no centre stripe, no numbers.
     final shellRect = Offset.zero & size;
-
-    // collar ring under the head
-    final collar = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: Offset(cx, h * 0.93), width: w * 0.62, height: h * 0.11),
-      Radius.circular(h * 0.05),
-    );
-    canvas.drawRRect(collar, Paint()..color = const Color(0xFF2A2F3D));
-    canvas.drawRRect(
-      collar,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = w * 0.008
-        ..color = GipsyColors.armorEdge.withValues(alpha: 0.8),
-    );
-    for (var i = -3; i <= 3; i++) {
-      final x = cx + i * w * 0.07;
-      canvas.drawLine(
-        Offset(x, h * 0.895),
-        Offset(x, h * 0.965),
-        Paint()
-          ..strokeWidth = w * 0.006
-          ..color = const Color(0xFF171B25),
-      );
-    }
-
-    // dome: tall rounded shell, widest at the cheeks
-    final shell = Path()
-      ..moveTo(cx, h * 0.02)
-      ..cubicTo(w * 0.80, h * 0.02, w * 0.92, h * 0.26, w * 0.90, h * 0.52)
-      ..cubicTo(w * 0.89, h * 0.70, w * 0.80, h * 0.84, w * 0.66, h * 0.89)
-      ..lineTo(w * 0.34, h * 0.89)
-      ..cubicTo(w * 0.20, h * 0.84, w * 0.11, h * 0.70, w * 0.10, h * 0.52)
-      ..cubicTo(w * 0.08, h * 0.26, w * 0.20, h * 0.02, cx, h * 0.02)
-      ..close();
-    canvas.drawPath(
-      shell,
-      Paint()
-        ..shader = const RadialGradient(
-          center: Alignment(-0.35, -0.55),
-          radius: 1.05,
-          colors: [Color(0xFF5A6F99), Color(0xFF3B4D73), Color(0xFF243150), Color(0xFF151C2E)],
-          stops: [0, 0.35, 0.75, 1],
-        ).createShader(shellRect),
-    );
-    canvas.drawPath(
-      shell,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = w * 0.012
-        ..color = const Color(0xFF6F82AA).withValues(alpha: 0.8),
-    );
-
-    // specular highlight on the dome
-    canvas.drawOval(
-      Rect.fromCenter(center: Offset(w * 0.36, h * 0.13), width: w * 0.22, height: h * 0.07),
-      Paint()
-        ..color = Colors.white.withValues(alpha: 0.10)
-        ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.02),
-    );
-
+    Paint plate(List<Color> c, {Alignment begin = Alignment.topLeft, Alignment end = Alignment.bottomRight}) =>
+        Paint()..shader = LinearGradient(begin: begin, end: end, colors: c).createShader(shellRect);
+    final edge = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.007
+      ..strokeJoin = StrokeJoin.miter
+      ..color = const Color(0xFF8C9DC2).withValues(alpha: 0.75);
     final seam = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = w * 0.006
-      ..color = const Color(0xFF121827);
+      ..color = const Color(0xFF0D121D);
 
-    // brow plate: two panel arcs over the visor
-    for (final f in [0.27, 0.22]) {
-      canvas.drawArc(
-        Rect.fromCenter(center: Offset(cx, h * 0.40), width: w * (0.70 + f * 0.2), height: h * f * 2),
-        math.pi * 1.08,
-        math.pi * 0.84,
-        false,
-        seam,
-      );
+    // swept-back fins behind the head (drawn first so the head sits on top)
+    for (final side in [-1.0, 1.0]) {
+      double x(double f) => cx + side * w * f;
+      final fin = Path()
+        ..moveTo(x(0.30), h * 0.30)
+        ..lineTo(x(0.50), h * 0.02)
+        ..lineTo(x(0.47), h * 0.20)
+        ..lineTo(x(0.40), h * 0.40)
+        ..close();
+      canvas.drawPath(fin, plate([const Color(0xFF4A5C85), const Color(0xFF222C45)]));
+      canvas.drawPath(fin, edge);
     }
 
-    // temple vents with small amber accent lights (one each side)
-    for (final side in [-1.0, 1.0]) {
-      for (var i = 0; i < 3; i++) {
-        final x = cx + side * w * (0.20 + i * 0.045);
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromCenter(center: Offset(x, h * 0.17 + i * h * 0.015), width: w * 0.025, height: h * 0.07),
-            Radius.circular(w * 0.01),
-          ),
-          Paint()..color = const Color(0xFF151B2A),
+    // armoured collar with hazard striping
+    final collar = Path()
+      ..moveTo(w * 0.22, h * 0.86)
+      ..lineTo(w * 0.78, h * 0.86)
+      ..lineTo(w * 0.84, h * 0.99)
+      ..lineTo(w * 0.16, h * 0.99)
+      ..close();
+    canvas.drawPath(collar, Paint()..color = const Color(0xFF262B38));
+    canvas.save();
+    canvas.clipPath(collar);
+    for (var i = -10; i < 10; i++) {
+      final x0 = cx + i * w * 0.05;
+      if (i.isEven) {
+        canvas.drawPath(
+          Path()
+            ..moveTo(x0, h * 0.99)
+            ..lineTo(x0 + w * 0.025, h * 0.99)
+            ..lineTo(x0 + w * 0.055, h * 0.86)
+            ..lineTo(x0 + w * 0.03, h * 0.86)
+            ..close(),
+          Paint()..color = GipsyColors.amberDeep.withValues(alpha: 0.55),
         );
       }
-      canvas.drawCircle(
-        Offset(cx + side * w * 0.11, h * 0.235),
-        w * 0.012,
-        Paint()..color = GipsyColors.amber.withValues(alpha: 0.25 + 0.65 * power),
-      );
     }
+    canvas.restore();
+    canvas.drawPath(collar, edge);
 
-    // jaw guard: rounded chin plate with a grille
-    final jaw = Path()
-      ..moveTo(w * 0.24, h * 0.68)
-      ..quadraticBezierTo(cx, h * 0.62, w * 0.76, h * 0.68)
-      ..lineTo(w * 0.66, h * 0.86)
-      ..quadraticBezierTo(cx, h * 0.90, w * 0.34, h * 0.86)
+    // main skull: faceted, wide at the cheeks, tapering to a sharp jaw
+    final shell = Path()
+      ..moveTo(w * 0.40, h * 0.02)
+      ..lineTo(w * 0.60, h * 0.02)
+      ..lineTo(w * 0.78, h * 0.10)
+      ..lineTo(w * 0.87, h * 0.30)
+      ..lineTo(w * 0.88, h * 0.56)
+      ..lineTo(w * 0.78, h * 0.76)
+      ..lineTo(w * 0.60, h * 0.89)
+      ..lineTo(w * 0.40, h * 0.89)
+      ..lineTo(w * 0.22, h * 0.76)
+      ..lineTo(w * 0.12, h * 0.56)
+      ..lineTo(w * 0.13, h * 0.30)
+      ..lineTo(w * 0.22, h * 0.10)
       ..close();
-    canvas.drawPath(jaw, Paint()..color = Colors.black.withValues(alpha: 0.20));
-    canvas.drawPath(jaw, seam);
-    for (var i = 0; i < 4; i++) {
-      final y = h * (0.73 + i * 0.03);
-      canvas.drawLine(Offset(cx - w * 0.10, y), Offset(cx + w * 0.10, y), seam);
+    canvas.drawPath(shell, plate([const Color(0xFF55688F), const Color(0xFF34446A), const Color(0xFF1A2337)]));
+    canvas.drawPath(shell, edge);
+
+    // crown plate: a raised, lighter facet on top
+    final crown = Path()
+      ..moveTo(w * 0.40, h * 0.02)
+      ..lineTo(w * 0.60, h * 0.02)
+      ..lineTo(w * 0.66, h * 0.22)
+      ..lineTo(cx, h * 0.27)
+      ..lineTo(w * 0.34, h * 0.22)
+      ..close();
+    canvas.drawPath(
+      crown,
+      plate(
+        [const Color(0xFF6E81AA), const Color(0xFF41527A)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ),
+    );
+    canvas.drawPath(crown, edge);
+    // twin amber running lights on the crown
+    for (final side in [-1.0, 1.0]) {
+      canvas.drawLine(
+        Offset(cx + side * w * 0.05, h * 0.07),
+        Offset(cx + side * w * 0.065, h * 0.19),
+        Paint()
+          ..strokeWidth = w * 0.012
+          ..strokeCap = StrokeCap.round
+          ..color = GipsyColors.amber.withValues(alpha: 0.2 + 0.7 * power),
+      );
     }
 
-    // side comm pods (light up and send rings when listening)
+    // side armour slabs (temples) with vents
     for (final side in [-1.0, 1.0]) {
-      final c = Offset(cx + side * w * 0.455, h * 0.55);
-      canvas.drawCircle(c, w * 0.06, Paint()..color = const Color(0xFF263252));
-      canvas.drawCircle(
-        c,
-        w * 0.06,
+      double x(double f) => cx + side * w * f;
+      final slab = Path()
+        ..moveTo(x(0.23), h * 0.12)
+        ..lineTo(x(0.37), h * 0.30)
+        ..lineTo(x(0.38), h * 0.56)
+        ..lineTo(x(0.30), h * 0.66)
+        ..lineTo(x(0.37), h * 0.30)
+        ..close();
+      canvas.drawPath(slab, Paint()..color = Colors.black.withValues(alpha: 0.18));
+      for (var i = 0; i < 3; i++) {
+        canvas.drawLine(
+          Offset(x(0.27 + i * 0.03), h * 0.20 + i * h * 0.02),
+          Offset(x(0.30 + i * 0.03), h * 0.30),
+          seam..strokeWidth = w * 0.009,
+        );
+      }
+    }
+    seam.strokeWidth = w * 0.006;
+
+    // jaw: sharp chin guard with intake slits
+    final jaw = Path()
+      ..moveTo(w * 0.27, h * 0.66)
+      ..lineTo(w * 0.73, h * 0.66)
+      ..lineTo(w * 0.62, h * 0.86)
+      ..lineTo(w * 0.38, h * 0.86)
+      ..close();
+    canvas.drawPath(
+      jaw,
+      plate(
+        [const Color(0xFF2E3B5C), const Color(0xFF151C2C)],
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+      ),
+    );
+    canvas.drawPath(jaw, edge);
+    for (var i = 0; i < 5; i++) {
+      final x = cx + (i - 2) * w * 0.045;
+      canvas.drawLine(
+        Offset(x, h * 0.71),
+        Offset(x + (i - 2) * w * 0.006, h * 0.81),
         Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = w * 0.009
-          ..color = const Color(0xFF6F82AA),
+          ..strokeWidth = w * 0.014
+          ..strokeCap = StrokeCap.round
+          ..color = const Color(0xFF0A0E16),
       );
+    }
+
+    // battle scratches
+    final scratch = Paint()
+      ..strokeWidth = w * 0.004
+      ..color = const Color(0xFFB8C3DD).withValues(alpha: 0.35);
+    canvas.drawLine(Offset(w * 0.70, h * 0.12), Offset(w * 0.76, h * 0.20), scratch);
+    canvas.drawLine(Offset(w * 0.72, h * 0.13), Offset(w * 0.765, h * 0.185), scratch);
+    canvas.drawLine(Offset(w * 0.20, h * 0.62), Offset(w * 0.25, h * 0.66), scratch);
+
+    // side sensor pods (light up and send rings when listening)
+    for (final side in [-1.0, 1.0]) {
+      final c = Offset(cx + side * w * 0.43, h * 0.47);
+      final hex = Path();
+      for (var k = 0; k < 6; k++) {
+        final ang = math.pi / 6 + k * math.pi / 3;
+        final pt = c + Offset(math.cos(ang), math.sin(ang)) * (w * 0.055);
+        if (k == 0) {
+          hex.moveTo(pt.dx, pt.dy);
+        } else {
+          hex.lineTo(pt.dx, pt.dy);
+        }
+      }
+      hex.close();
+      canvas.drawPath(hex, Paint()..color = const Color(0xFF1C2438));
+      canvas.drawPath(hex, edge);
       final glow = mode == GipsyMode.sleeping
           ? 0.08
           : 0.35 + 0.65 * power * (mode == GipsyMode.listening ? level : 0.3);
-      canvas.drawCircle(c, w * 0.022, Paint()..color = GipsyColors.amber.withValues(alpha: glow));
+      canvas.drawCircle(c, w * 0.02, Paint()..color = GipsyColors.amber.withValues(alpha: glow));
 
       if (mode == GipsyMode.listening) {
         for (var k = 0; k < 3; k++) {
@@ -235,22 +286,22 @@ class _HelmetPainter extends CustomPainter {
       }
     }
 
-    // ---------- visor: one smooth wraparound band ---------------------------
+    // ---------- visor: a narrow armoured slit under a heavy brow -------------
     final visor = Path()
-      ..moveTo(w * 0.14, h * 0.40)
-      ..quadraticBezierTo(cx, h * 0.31, w * 0.86, h * 0.40)
-      ..quadraticBezierTo(w * 0.885, h * 0.50, w * 0.83, h * 0.58)
-      ..quadraticBezierTo(cx, h * 0.52, w * 0.17, h * 0.58)
-      ..quadraticBezierTo(w * 0.115, h * 0.50, w * 0.14, h * 0.40)
+      ..moveTo(w * 0.17, h * 0.38)
+      ..lineTo(w * 0.83, h * 0.38)
+      ..lineTo(w * 0.79, h * 0.54)
+      ..lineTo(w * 0.62, h * 0.58)
+      ..lineTo(w * 0.38, h * 0.58)
+      ..lineTo(w * 0.21, h * 0.54)
       ..close();
-    // dark rim around the glass
     canvas.drawPath(
       visor,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = w * 0.035
-        ..strokeJoin = StrokeJoin.round
-        ..color = const Color(0xFF1A2133),
+        ..strokeWidth = w * 0.03
+        ..strokeJoin = StrokeJoin.miter
+        ..color = const Color(0xFF111725),
     );
     final vRect = visor.getBounds();
 
@@ -390,6 +441,32 @@ class _HelmetPainter extends CustomPainter {
           ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.04),
       );
     }
+    // heavy brow plate overhanging the visor (drawn last, on top)
+    final brow = Path()
+      ..moveTo(w * 0.13, h * 0.30)
+      ..lineTo(w * 0.87, h * 0.30)
+      ..lineTo(w * 0.85, h * 0.37)
+      ..lineTo(w * 0.60, h * 0.40)
+      ..lineTo(cx, h * 0.43)
+      ..lineTo(w * 0.40, h * 0.40)
+      ..lineTo(w * 0.15, h * 0.37)
+      ..close();
+    canvas.drawPath(
+      brow,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF6A7DA6), Color(0xFF2C3A5C)],
+        ).createShader(Rect.fromLTWH(0, h * 0.30, w, h * 0.13)),
+    );
+    canvas.drawPath(
+      brow,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * 0.007
+        ..color = const Color(0xFF8C9DC2).withValues(alpha: 0.75),
+    );
     canvas.drawPath(
       visor,
       Paint()
