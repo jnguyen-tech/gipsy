@@ -1,0 +1,34 @@
+# Using TradingView
+
+## What TradingView is
+TradingView is a charting website and app (browser, Windows, Mac, iPhone, Android). You use it to look at price charts for almost anything that trades: stocks, ETFs, indexes, futures like gold and oil, forex pairs, crypto and bond yields. The free plan is enough to learn. It limits how many indicators you can stack on one chart (two or three, depending on the current plan rules), how many alerts you can keep, and shows some ads. Paid plans raise those limits. TradingView is a charting tool, not a broker, although you can link some brokers to it. A good first habit is to use it only for looking and practising, not for real-money trades.
+
+## The main screen
+The chart sits in the middle. Along the top bar you find the symbol search, the timeframe picker, the chart type (candles, bars, line), the Indicators button, alerts and the layout menu. The left toolbar holds drawing tools: trend lines, horizontal lines, Fibonacci tools, shapes, text and the ruler (measure). The right side has the watchlist, alerts list, news, and the object tree, which lists everything drawn on the chart so you can hide or delete it. At the bottom you find the Pine Editor (for scripts), the Strategy Tester and the paper trading panel.
+
+## Finding a symbol
+Click the symbol name at the top left, or just start typing on the chart. Useful examples: AAPL (Apple), SPY (S&P 500 ETF), SPX or SP:SPX (the S&P 500 index), BTCUSD or BINANCE:BTCUSDT (bitcoin), XAUUSD (gold spot against the dollar), XAGUSD (silver spot), GC1! and SI1! (front-month gold and silver futures), US10Y (10-year Treasury yield), DXY (dollar index), TLT (long-term Treasury bond ETF), XHB (homebuilders ETF) and VNQ (real-estate ETF). The text before the colon is the exchange or data source. The same asset can show slightly different prices on different sources.
+
+## Timeframes
+The timeframe sets what each candle represents: 1m, 5m, 15m, 1h, 4h, 1D (daily), 1W (weekly), 1M (monthly). Shorter timeframes show more noise. Longer ones show the bigger trend. A common habit is top-down analysis: look at the weekly to see the big direction, the daily for structure, and a shorter one only to fine-tune. A 200 EMA on a daily chart means 200 days. The same indicator on a 1-hour chart means 200 hours, which is a completely different thing. Always say the timeframe when you talk about a level or an indicator.
+
+## Adding indicators like EMAs
+Click Indicators (fx) at the top, search "Moving Average Exponential" and click it once per line you want. Each copy appears on the chart. Open its settings (double-click the line or use the gear icon on its label) and set Length, for example 20, 50 and 200. Under Style, give each a different colour and thickness so you can tell them apart, for example short = thin, long = thick. Source is normally "close". Once you like the setup, save it with the indicator Templates button, so you can load all three EMAs on any chart in one click. On the free plan, the "Moving Average Ribbon" or a community script that draws several EMAs at once can save indicator slots.
+
+## Drawing tools
+Horizontal line: marks a support or resistance level. Horizontal ray: a level that starts at a specific candle. Trend line: click two swing lows (in an uptrend) or two swing highs (in a downtrend). Parallel channel: a trend line plus a copy on the other side of the price. Fib retracement: drag from a swing low to a swing high to see the 38.2%, 50% and 61.8% pullback levels that many traders watch. Ruler or measure: shift-click and drag to see the percentage move and the number of bars between two points. Keep drawings few and meaningful. A chart covered in lines makes every outcome look predicted after the fact. Handy shortcuts on desktop: Alt+H horizontal line, Alt+T trend line, Alt+F Fib retracement, Alt+A add alert, Ctrl+Z undo.
+
+## Watchlists, layouts and alerts
+A watchlist is your list of symbols on the right. Make separate lists, for example "Metals" (gold, silver, miners), "Rates" (US10Y, US02Y, TLT, DXY), "Crypto" and "Housing" (XHB, VNQ, mortgage-sensitive stocks). Click a symbol to load it on the current chart. A layout saves the whole chart window, including indicators and drawings. You can split the screen to see two to four charts together, for example gold and US10Y side by side. Alerts notify you when something happens, for example "BTCUSD crosses 100000" or "price crosses EMA 200". Right-click on the chart or press Alt+A, pick the condition and choose how you want to be notified (popup, app push, email). Alerts are the best way to stop staring at charts all day.
+
+## Comparing assets on one chart
+The Compare button (the plus sign next to the symbol name) overlays another symbol on the same chart, for example gold with DXY, or bitcoin with the Nasdaq 100 (NDX). With the percentage scale on, both lines start at 0% from the left edge of the screen, so you can see which moved more and whether they move together or opposite. You can also type a ratio straight into the symbol box: XAUUSD/XAGUSD gives the gold-to-silver ratio, and SPX/XAUUSD shows the S&P 500 priced in gold. Ratios like these are a quick way to see relationships the knowledge pack describes.
+
+## Paper trading
+Paper trading is pretend trading with fake money. Open the Trading Panel at the bottom and choose Paper Trading. You start with a virtual balance. You can place market, limit and stop orders and attach a stop loss and take profit, then watch the results. It is the right place to practise reading charts and managing risk without losing anything. Treat it seriously: use realistic position sizes and write down why you entered each trade, otherwise the practice teaches bad habits. Remember that fills in paper trading are easier than in real markets.
+
+## Bar replay
+Bar Replay (the rewind icon on the top bar) hides the right side of the chart and lets you play history forward one candle at a time. Pick a starting point in the past, hide the future, and practise deciding what you would do before you see what happened. It is one of the best ways to learn chart reading quickly, because you get hundreds of practice decisions in an afternoon instead of waiting months for live setups.
+
+## Pine Script basics
+Pine Script is TradingView's own language for writing indicators and strategies. Open the Pine Editor at the bottom. A tiny indicator that plots two EMAs and marks crossovers looks like this in words: declare an indicator, compute fast = ta.ema(close, 20) and slow = ta.ema(close, 50), plot both, and use plotshape on ta.crossover(fast, slow) to put a marker under the candle. A strategy script can place pretend trades on history and the Strategy Tester shows the results. Beware: a backtest that looks amazing is often overfitted to the past, and backtests usually ignore slippage and fees unless you add them.
