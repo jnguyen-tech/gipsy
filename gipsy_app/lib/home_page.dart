@@ -4,6 +4,7 @@ import 'brain.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import 'visor.dart';
+import 'week_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.brain});
@@ -106,6 +107,11 @@ class _HomePageState extends State<HomePage> {
           leading: _ModelMenu(brain: brain),
           leadingWidth: 64,
           actions: [
+            IconButton(
+              tooltip: 'This week',
+              icon: const Icon(Icons.calendar_month_outlined),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => WeekPage(hub: brain.hub))),
+            ),
             IconButton(tooltip: 'Go to sleep', icon: const Icon(Icons.bedtime_outlined), onPressed: brain.sleepNow),
             IconButton(
               tooltip: 'Settings',
@@ -168,7 +174,7 @@ class _HeadPanel extends StatelessWidget {
                 brain.wakeAndListen();
               }
             },
-            child: Visor(mode: brain.mode, level: brain.visorLevel, size: visorSize),
+            child: Visor(mode: brain.mode, level: brain.visorLevel, size: visorSize, alert: brain.kaijuActive),
           ),
           const SizedBox(height: 12),
           ChamferPanel(

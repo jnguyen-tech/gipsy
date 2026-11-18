@@ -13,8 +13,11 @@ enum GipsyMode { sleeping, idle, listening, thinking, speaking }
 ///  thinking  - a scanner light sweeps back and forth across the visor
 ///  speaking  - equaliser bars in the visor bounce with Gipsy's voice
 class Visor extends StatefulWidget {
-  const Visor({super.key, required this.mode, required this.level, this.size = 260});
+  const Visor({super.key, required this.mode, required this.level, this.size = 260, this.alert = false});
   final GipsyMode mode;
+
+  /// Kaiju alert: red-amber strobe, shaking head and hazard rings.
+  final bool alert;
 
   /// 0..1 mic level when listening, voice level when speaking.
   final ValueNotifier<double> level;
@@ -28,16 +31,28 @@ class _VisorState extends State<Visor> with TickerProviderStateMixin {
   late final AnimationController _clock = AnimationController(vsync: this, duration: const Duration(seconds: 60))
     ..repeat();
   // Smooths the on/off of the visor so waking up looks like powering up.
+  // Power 0..1. Going up plays the boot sequence (flicker, scan line, pods
+  // lighting in order); going down plays the CRT-style shutdown.
   late final AnimationController _power = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 700),
+    duration: const Duration(milliseconds: 1600),
+    reverseDuration: const Duration(milliseconds: 900),
     value: widget.mode == GipsyMode.sleeping ? 0 : 1,
+  );
+  // A quick bloom flash whenever the mode changes.
+  late final AnimationController _flash = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+    value: 1,
   );
   double _smoothLevel = 0;
 
   @override
   void didUpdateWidget(covariant Visor old) {
     super.didUpdateWidget(old);
+    if (old.mode != widget.mode && widget.mode != GipsyMode.sleeping && old.mode != GipsyMode.sleeping) {
+      _flash.forward(from: 0);
+    }
     if (widget.mode == GipsyMode.sleeping) {
       _power.reverse();
     } else {
@@ -49,6 +64,7 @@ class _VisorState extends State<Visor> with TickerProviderStateMixin {
   void dispose() {
     _clock.dispose();
     _power.dispose();
+    _flash.dispose();
     super.dispose();
   }
 
@@ -56,7 +72,7 @@ class _VisorState extends State<Visor> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return RepaintBoundary(
       child: AnimatedBuilder(
-        animation: Listenable.merge([_clock, _power, widget.level]),
+        animation: Listenable.merge([_clock, _power, _flash, widget.level]),
         builder: (context, _) {
           _smoothLevel = _smoothLevel * 0.6 + widget.level.value * 0.4;
           return CustomPaint(
@@ -64,7 +80,10 @@ class _VisorState extends State<Visor> with TickerProviderStateMixin {
             painter: _HelmetPainter(
               mode: widget.mode,
               t: _clock.value * 60, // seconds
-              power: Curves.easeOut.transform(_power.value),
+              power: _power.value,
+              booting: _power.status == AnimationStatus.forward,
+              flash: 1 - Curves.easeOut.transform(_flash.value),
+              alert: widget.alert,
               level: _smoothLevel,
             ),
           );
@@ -75,16 +94,51 @@ class _VisorState extends State<Visor> with TickerProviderStateMixin {
 }
 
 class _HelmetPainter extends CustomPainter {
-  _HelmetPainter({required this.mode, required this.t, required this.power, required this.level});
+  _HelmetPainter({
+    required this.mode,
+    required this.t,
+    required double power,
+    required this.booting,
+    required this.flash,
+    required this.alert,
+    required this.level,
+  }) : rawPower = power,
+       // While booting the visor flickers like a failing tube before it holds.
+       power = booting && power < 0.45
+           ? (_hash((t * 22).floor()) > 0.45 ? power * 1.6 : 0.04)
+           : Curves.easeOut.transform(power);
   final GipsyMode mode;
   final double t;
+  final double rawPower;
   final double power;
+  final bool booting;
+  final double flash;
+  final bool alert;
   final double level;
+
+  static double _hash(int n) {
+    final x = math.sin(n * 12.9898) * 43758.5453;
+    return x - x.floorToDouble();
+  }
+
+  bool get awake => mode != GipsyMode.sleeping;
 
   @override
   void paint(Canvas canvas, Size size) {
     final w = size.width, h = size.height;
     final cx = w / 2;
+
+    _paintBackdrop(canvas, size);
+
+    // "Camera": a slow hover bob, a shake during a kaiju alert, and a slight
+    // push-in while booting.
+    canvas.save();
+    final bob = math.sin(t * 1.1) * h * 0.012 * (awake ? 1 : 0.4);
+    final shake = alert ? Offset(math.sin(t * 61) * w * 0.008, math.cos(t * 47) * h * 0.006) : Offset.zero;
+    final zoom = 1 + 0.04 * (1 - Curves.easeOutCubic.transform(rawPower.clamp(0, 1))) * (booting ? 1 : 0);
+    canvas.translate(cx + shake.dx, h / 2 + bob + shake.dy);
+    canvas.scale(zoom);
+    canvas.translate(-cx, -h / 2);
 
     // ---------- helmet: an ORIGINAL angular battle-mech design -------------
     // Heavy armour plates, an overhanging brow and a narrow
@@ -250,9 +304,10 @@ class _HelmetPainter extends CustomPainter {
       hex.close();
       canvas.drawPath(hex, Paint()..color = const Color(0xFF1C2438));
       canvas.drawPath(hex, edge);
+      final podOn = booting ? ((rawPower - (side < 0 ? 0.45 : 0.6)) / 0.15).clamp(0.0, 1.0) : 1.0;
       final glow = mode == GipsyMode.sleeping
           ? 0.08
-          : 0.35 + 0.65 * power * (mode == GipsyMode.listening ? level : 0.3);
+          : (0.35 + 0.65 * power * (mode == GipsyMode.listening ? level : 0.3)) * podOn;
       canvas.drawCircle(c, w * 0.02, Paint()..color = GipsyColors.amber.withValues(alpha: glow));
 
       if (mode == GipsyMode.listening) {
@@ -300,6 +355,23 @@ class _HelmetPainter extends CustomPainter {
 
     switch (mode) {
       case GipsyMode.sleeping:
+        // Shutdown: the glow collapses to a bright line, then a dot, like an
+        // old CRT switching off.
+        if (rawPower > 0.01) {
+          final p = Curves.easeIn.transform(rawPower);
+          final r = Rect.fromCenter(
+            center: vRect.center,
+            width: vRect.width * (p > 0.35 ? 1.0 : 0.05 + p / 0.35 * 0.95),
+            height: vRect.height * math.max(0.06, (p - 0.35).clamp(0.0, 1.0) / 0.65),
+          );
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(r, Radius.circular(r.height / 2)),
+            Paint()
+              ..color = Color.lerp(GipsyColors.amber, Colors.white, 1 - p)!.withValues(alpha: 0.95)
+              ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.01),
+          );
+          break;
+        }
         // A barely-there line that breathes slowly, like a standby LED.
         final breathe = 0.10 + 0.08 * (0.5 + 0.5 * math.sin(t * 1.3));
         _glowBar(
@@ -404,6 +476,26 @@ class _HelmetPainter extends CustomPainter {
         break;
     }
 
+    // boot: a bright scan line sweeps down the glass
+    if (booting && rawPower > 0.3 && rawPower < 0.95) {
+      final y = vRect.top + vRect.height * ((rawPower - 0.3) / 0.65);
+      canvas.drawRect(
+        Rect.fromLTWH(vRect.left, y - vRect.height * 0.08, vRect.width, vRect.height * 0.16),
+        Paint()
+          ..color = Colors.white.withValues(alpha: 0.85)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.008),
+      );
+    }
+    // kaiju alert: the glass strobes red-amber
+    if (alert && awake) {
+      final strobe = (math.sin(t * 9) > 0) ? 0.55 : 0.15;
+      canvas.drawRect(vRect, Paint()..color = const Color(0xFFFF3B1F).withValues(alpha: strobe));
+    }
+    // bloom flash on a mode change
+    if (flash > 0.01 && awake) {
+      canvas.drawRect(vRect, Paint()..color = Colors.white.withValues(alpha: 0.5 * flash));
+    }
+
     // scan lines on the glass
     final scan = Paint()..color = Colors.black.withValues(alpha: 0.18);
     for (var y = vRect.top; y < vRect.bottom; y += 3) {
@@ -424,8 +516,10 @@ class _HelmetPainter extends CustomPainter {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = w * 0.02
-          ..color = GipsyColors.amber.withValues(alpha: glow * power)
-          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * 0.04),
+          ..color = (alert ? const Color(0xFFFF5A1F) : GipsyColors.amber).withValues(
+            alpha: ((glow + 0.5 * flash) * power).clamp(0.0, 1.0),
+          )
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, w * (0.04 + 0.03 * flash)),
       );
     }
     // heavy brow plate overhanging the visor (drawn last, on top)
@@ -461,6 +555,100 @@ class _HelmetPainter extends CustomPainter {
         ..strokeWidth = w * 0.01
         ..color = GipsyColors.armorEdge,
     );
+    canvas.restore();
+
+    _paintHud(canvas, size);
+  }
+
+  /// Behind the head: a soft glow, slowly turning holographic rings and
+  /// drifting embers. Rings spin faster while thinking; everything turns
+  /// red-amber in a kaiju alert.
+  void _paintBackdrop(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final c = Offset(w / 2, h * 0.48);
+    final tint = alert ? const Color(0xFFFF4A1F) : (awake ? GipsyColors.amber : GipsyColors.navyGlow);
+    final energy = awake ? (0.35 + 0.65 * power) : 0.25;
+
+    // halo
+    final pulse = 0.5 + 0.5 * math.sin(t * (alert ? 9 : 1.4));
+    canvas.drawCircle(
+      c,
+      w * 0.62,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [
+            tint.withValues(alpha: (0.10 + 0.10 * pulse + 0.25 * level * (awake ? 1 : 0)) * energy),
+            tint.withValues(alpha: 0),
+          ],
+        ).createShader(Rect.fromCircle(center: c, radius: w * 0.62)),
+    );
+
+    // holographic rings: dashed arcs turning in opposite directions
+    final spin = mode == GipsyMode.thinking ? 2.4 : (alert ? 3.0 : 0.25);
+    for (var ring = 0; ring < 3; ring++) {
+      final r = w * (0.50 + ring * 0.07);
+      final dir = ring.isEven ? 1 : -1;
+      final segs = 10 + ring * 6;
+      final paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = w * (0.006 - ring * 0.0012)
+        ..color = tint.withValues(alpha: (0.22 - ring * 0.05) * energy);
+      for (var i = 0; i < segs; i++) {
+        if ((i + ring) % 3 == 0) continue;
+        final a0 = dir * t * spin * (0.5 + ring * 0.25) + i * 2 * math.pi / segs;
+        canvas.drawArc(Rect.fromCircle(center: c, radius: r), a0, 2 * math.pi / segs * 0.6, false, paint);
+      }
+    }
+    // tick marks on the inner ring, like a targeting reticle
+    final tick = Paint()
+      ..strokeWidth = w * 0.004
+      ..color = tint.withValues(alpha: 0.35 * energy);
+    for (var i = 0; i < 4; i++) {
+      final a = i * math.pi / 2 + t * spin * 0.3;
+      final d = Offset(math.cos(a), math.sin(a));
+      canvas.drawLine(c + d * (w * 0.44), c + d * (w * 0.48), tick);
+    }
+
+    // drifting embers rising past the head
+    final ember = Paint();
+    for (var i = 0; i < 26; i++) {
+      final seed = _hash(i * 7 + 3);
+      final speed = 0.04 + 0.06 * _hash(i * 13 + 1) * (alert ? 3 : 1);
+      final life = (t * speed + seed) % 1.0;
+      final x = w * (0.05 + 0.9 * _hash(i * 31 + 5)) + math.sin(t * 0.7 + i) * w * 0.02;
+      final y = h * (1.05 - life * 1.15);
+      final a = math.sin(life * math.pi) * (0.25 + 0.5 * _hash(i * 17)) * energy;
+      ember.color = tint.withValues(alpha: a);
+      canvas.drawCircle(Offset(x, y), w * (0.003 + 0.004 * _hash(i * 5)), ember);
+    }
+  }
+
+  /// Corner brackets that snap in during boot, like a targeting HUD.
+  void _paintHud(Canvas canvas, Size size) {
+    if (!awake && rawPower < 0.01) return;
+    final w = size.width, h = size.height;
+    final settle = Curves.easeOutBack.transform(rawPower.clamp(0.0, 1.0));
+    final inset = w * (0.02 + 0.10 * (1 - settle));
+    final len = w * 0.08;
+    final col = (alert ? const Color(0xFFFF4A1F) : GipsyColors.amber).withValues(
+      alpha: (booting ? 0.9 : 0.35) * rawPower.clamp(0.0, 1.0),
+    );
+    final p = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = w * 0.006
+      ..color = col;
+    final r = Rect.fromLTRB(inset, inset * 0.6, w - inset, h - inset * 0.6);
+    for (final corner in [r.topLeft, r.topRight, r.bottomLeft, r.bottomRight]) {
+      final sx = corner.dx < w / 2 ? 1.0 : -1.0;
+      final sy = corner.dy < h / 2 ? 1.0 : -1.0;
+      canvas.drawPath(
+        Path()
+          ..moveTo(corner.dx, corner.dy + sy * len)
+          ..lineTo(corner.dx, corner.dy)
+          ..lineTo(corner.dx + sx * len, corner.dy),
+        p,
+      );
+    }
   }
 
   void _fill(Canvas canvas, Rect r, double a) {

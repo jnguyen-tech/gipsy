@@ -133,6 +133,41 @@ class HubClient {
     if (r.statusCode != 200) throw HubException('No battle song (${r.statusCode})');
     return r.bodyBytes;
   }
+
+  /// This week's agenda: calendars, to-do list and market events, by day.
+  Future<Map<String, dynamic>> week({int days = 7}) async {
+    final base = await _base();
+    final r = await _http
+        .get(Uri.parse('$base/api/week?days=$days'), headers: _headers)
+        .timeout(const Duration(seconds: 30));
+    if (r.statusCode != 200) throw HubException('Couldn\'t load your week (${r.statusCode})');
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  Future<void> addTask(String title, {String due = '', String kind = 'task'}) async {
+    final base = await _base();
+    final r = await _http
+        .post(
+          Uri.parse('$base/api/tasks'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({'title': title, 'due': due, 'kind': kind}),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (r.statusCode != 200) {
+      final detail = (jsonDecode(r.body) as Map?)?['detail'];
+      throw HubException(detail is String ? detail : 'Couldn\'t add the task (${r.statusCode})');
+    }
+  }
+
+  Future<void> completeTask(String id) async {
+    final base = await _base();
+    await _http.post(Uri.parse('$base/api/tasks/$id/done'), headers: _headers).timeout(const Duration(seconds: 10));
+  }
+
+  Future<void> deleteTask(String id) async {
+    final base = await _base();
+    await _http.delete(Uri.parse('$base/api/tasks/$id'), headers: _headers).timeout(const Duration(seconds: 10));
+  }
 }
 
 class HubException implements Exception {

@@ -5,3 +5,4 @@ gipsy_hub/hub.log
 __pycache__/
 gipsy_hub/knowledge/.index.json
 gipsy_hub/portfolio.json
+gipsy_hub/tasks.json

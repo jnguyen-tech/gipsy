@@ -495,11 +495,14 @@ FUNCTIONS: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = {
 }
 
 
-_EXTRA_DESCRIBE: dict[str, str] = {}
+# Other modules (briefing.py) add their own "what I'm doing" lines here.
+EXTRA_DESCRIPTIONS: dict[str, Callable[[dict[str, Any]], str]] = {}
 
 
 def describe_call(name: str, args: dict[str, Any]) -> str:
     """Short line the app shows while a tool runs."""
+    if name in EXTRA_DESCRIPTIONS:
+        return EXTRA_DESCRIPTIONS[name](args)
     a = next((str(v) for v in args.values() if v), "")
     return {
         "search_news": f"Checking the news: {a}" if a else "Checking today's headlines",
@@ -507,7 +510,7 @@ def describe_call(name: str, args: dict[str, Any]) -> str:
         "get_price": f"Looking up the price of {a}",
         "get_emas": f"Working out the EMAs for {a}",
         "get_economic": f"Pulling economic data: {a}",
-    }.get(name) or _EXTRA_DESCRIBE.get(name, f"Using {name}")
+    }.get(name, f"Using {name}")
 
 
 async def run_tool(name: str, args: dict[str, Any] | None) -> dict[str, Any]:
