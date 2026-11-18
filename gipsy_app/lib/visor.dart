@@ -87,7 +87,7 @@ class _HelmetPainter extends CustomPainter {
     final cx = w / 2;
 
     // ---------- helmet: an ORIGINAL angular battle-mech design -------------
-    // Heavy armour plates, an overhanging brow, swept-back fins and a narrow
+    // Heavy armour plates, an overhanging brow and a narrow
     // visor slit. Navy/slate + amber from John's logos. Not a copy of any film
     // or toy design: own silhouette, no centre stripe, no numbers.
     final shellRect = Offset.zero & size;
@@ -102,19 +102,6 @@ class _HelmetPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = w * 0.006
       ..color = const Color(0xFF0D121D);
-
-    // swept-back fins behind the head (drawn first so the head sits on top)
-    for (final side in [-1.0, 1.0]) {
-      double x(double f) => cx + side * w * f;
-      final fin = Path()
-        ..moveTo(x(0.30), h * 0.30)
-        ..lineTo(x(0.50), h * 0.02)
-        ..lineTo(x(0.47), h * 0.20)
-        ..lineTo(x(0.40), h * 0.40)
-        ..close();
-      canvas.drawPath(fin, plate([const Color(0xFF4A5C85), const Color(0xFF222C45)]));
-      canvas.drawPath(fin, edge);
-    }
 
     // armoured collar with hazard striping
     final collar = Path()
