@@ -495,6 +495,9 @@ FUNCTIONS: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = {
 }
 
 
+_EXTRA_DESCRIBE: dict[str, str] = {}
+
+
 def describe_call(name: str, args: dict[str, Any]) -> str:
     """Short line the app shows while a tool runs."""
     a = next((str(v) for v in args.values() if v), "")
@@ -504,7 +507,7 @@ def describe_call(name: str, args: dict[str, Any]) -> str:
         "get_price": f"Looking up the price of {a}",
         "get_emas": f"Working out the EMAs for {a}",
         "get_economic": f"Pulling economic data: {a}",
-    }.get(name, f"Using {name}")
+    }.get(name) or _EXTRA_DESCRIBE.get(name, f"Using {name}")
 
 
 async def run_tool(name: str, args: dict[str, Any] | None) -> dict[str, Any]:

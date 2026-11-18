@@ -138,6 +138,18 @@ Gipsy's model (Qwen3) stops learning at its training date, so the hub gives it t
 * **Knowledge pack** (`gipsy_hub/knowledge/*.md`): original lessons on TradingView, chart reading, EMAs, how gold, silver, bonds, the dollar, crypto and housing relate, and risk management. Every question is matched against these sections and the best few are handed to the model (RAG). Add your own `.md` files and restart the hub.
 * Everything market-related is framed as education, not financial advice. Quotes can be delayed.
 
+### Your portfolio and the market week ahead
+
+* `market_calendar`: Fed rate decisions, CPI, jobs, PPI and JOLTS reports, market holidays and early closes, plus earnings dates for your stocks and the biggest companies (Nasdaq's earnings calendar, the BLS release calendar, and a built-in Fed and holiday list in `gipsy_hub/markets.py`). Ask "What's coming up in the market this week?"
+* `get_portfolio`: your holdings and watchlist, priced now, with gain or loss and whether each is above its 50 and 200 day EMA. Read-only. Ask "How's my portfolio doing?"
+
+**About Robinhood:** Robinhood has no public API for stock accounts, and its MCP connector signs in to Claude on claude.ai, not to programs on your PC. So Gipsy's local model can't talk to Robinhood directly. Instead it reads `gipsy_hub/portfolio.json`:
+
+1. In the Gipsy project, ask Claude: "Sync my Robinhood to Gipsy." Claude reads your positions and watchlists through the connector (read-only, no orders) and gives you a `portfolio.json`.
+2. Save it in `gipsy_hub/` and restart the hub. Or copy `portfolio.example.json` to `portfolio.json` and edit it by hand.
+
+`portfolio.json` stays on your PC and is ignored by git, so your holdings never go into this public repo.
+
 One-time setup on the PC, after pulling this update:
 
 ```
@@ -182,6 +194,7 @@ gipsy_hub/
   gipsy_hub.py       FastAPI server: /api/chat, /api/tts, /api/stt, /api/health
   tools.py           news, web search, prices, EMAs, FRED data the model can call
   knowledge.py       the RAG search over knowledge/*.md
+  markets.py         market calendar (Fed, CPI, jobs, earnings, holidays) + portfolio.json
   knowledge/         markets lessons (TradingView, EMAs, gold/silver/bonds/crypto/housing)
   tests/             offline tests with a fake Ollama
 .github/workflows/build-apps.yml   free cloud builds for Windows + iPhone

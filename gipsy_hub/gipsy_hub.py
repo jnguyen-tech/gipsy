@@ -36,7 +36,13 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from knowledge import KnowledgePack
-from tools import TOOLS, describe_call, run_tool
+import markets
+from tools import _EXTRA_DESCRIBE, FUNCTIONS, TOOLS, describe_call, run_tool
+
+# Market calendar + portfolio tools live in markets.py.
+TOOLS += markets.TOOLS
+FUNCTIONS.update(markets.FUNCTIONS)
+_EXTRA_DESCRIBE.update(markets.DESCRIBE)
 
 HERE = Path(__file__).resolve().parent
 log = logging.getLogger("gipsy")
@@ -472,7 +478,7 @@ async def knowledge_search(q: str, k: int = 3) -> dict[str, Any]:
 async def tool_test(name: str, q: str = "") -> dict[str, Any]:
     """Run one tool by hand, e.g. /api/tools/get_price?q=gold"""
     first = {"search_news": "query", "web_search": "query", "get_price": "symbol",
-             "get_emas": "symbol", "get_economic": "series"}.get(name, "query")
+             "get_emas": "symbol", "get_economic": "series", "market_calendar": "days"}.get(name, "query")
     return await run_tool(name, {first: q} if q else {})
 
 
