@@ -1,0 +1,5 @@
+gipsy_hub/.venv/
+gipsy_hub/voices/
+gipsy_hub/config.json
+gipsy_hub/hub.log
+__pycache__/

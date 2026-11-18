@@ -1,0 +1,55 @@
+# Builds the Gipsy app for Windows and iPhone on GitHub's free cloud machines.
+# Go to the Actions tab -> "Build Gipsy apps" -> Run workflow. When it finishes,
+# download "gipsy-windows" and "gipsy-ios-unsigned" from the run page.
+name: Build Gipsy apps
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: gipsy_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+      - run: flutter build windows --release
+      - name: Zip the app
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ../Gipsy-Windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gipsy-windows
+          path: Gipsy-Windows.zip
+
+  ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: gipsy_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - name: Package unsigned .ipa (Sideloadly signs it with your Apple ID)
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr ../Gipsy-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gipsy-ios-unsigned
+          path: Gipsy-unsigned.ipa
