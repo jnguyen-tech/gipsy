@@ -83,6 +83,8 @@ jobs:
           path: Gipsy-Android.apk
 
   macos:
+    # Waits for the iPhone build so only one Mac machine is needed at a time.
+    needs: ios
     runs-on: macos-latest
     defaults:
       run:
