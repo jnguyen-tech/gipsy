@@ -61,9 +61,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # voice, then plays your battle song. Point kaiju_song_path at an audio
     # file you own (mp3/m4a/wav), e.g. D:\\Music\\battle-song.mp3.
     # kaiju_song_rate < 1.0 slows it down (0.85 = slowed). Use 1.0 if your
-    # file is already a slowed version.
+    # file is already a slowed version. A kaiju_song_url plays at its own speed.
     "kaiju_line": "Kaiju on the scanner. Suit up, John. Either we stop it here, or it stops us.",
     "kaiju_song_path": "",
+    # Or a link (YouTube, Spotify...) the app opens instead of a local file.
+    # Used only when kaiju_song_path is empty.
+    "kaiju_song_url": "",
     "kaiju_song_rate": 0.85,
     "system_prompt": (
         "You are Gipsy, a friendly robot desk companion built by John. "
@@ -334,6 +337,7 @@ async def kaiju() -> dict[str, Any]:
         "has_song": bool(CFG.get("kaiju_song_path")) and song.is_file(),
         "song_ext": song.suffix.lower() or ".mp3",
         "rate": float(CFG.get("kaiju_song_rate", 1.0)),
+        "song_url": CFG.get("kaiju_song_url", ""),
     }
 
 

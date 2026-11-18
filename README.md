@@ -62,7 +62,13 @@ Logos: the **Armored Visor** is the iPhone icon, the **Armored G** is the Window
 "kaiju_song_path": "D:\\Music\\battle-song.mp3",
 "kaiju_song_rate": 0.85
 ```
-`0.85` plays it slowed. Use `1.0` if your file is already a slowed version. You can change what Gipsy says with `kaiju_line`. Restart the hub after editing.
+`0.85` plays it slowed. Use `1.0` if your file is already a slowed version.
+
+**Or use a link instead of a file:** leave `kaiju_song_path` empty and set `kaiju_song_url` to a YouTube or Spotify link. After the battle line, the app opens the link in the YouTube or Spotify app, or in your browser:
+```json
+"kaiju_song_path": "",
+"kaiju_song_url": "https://www.youtube.com/watch?v=..."
+``` You can change what Gipsy says with `kaiju_line`. Restart the hub after editing.
 
 **Settings** live in `gipsy_hub/config.json`, which is created on the first run:
 * `voice_pitch`: 0.90 by default. Lower is deeper. 0.85 is a big mech, 1.0 is natural.

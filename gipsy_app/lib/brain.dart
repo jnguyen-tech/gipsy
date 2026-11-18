@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'hub_client.dart';
 import 'settings.dart';
@@ -309,8 +310,17 @@ class GipsyBrain extends ChangeNotifier {
           (info['song_ext'] as String?) ?? '.mp3',
           rate: (info['rate'] as num?)?.toDouble() ?? 1.0,
         );
+      } else if ((info['song_url'] as String? ?? '').isNotEmpty) {
+        // Open the song in YouTube / the browser once Gipsy has finished talking.
+        await mouth.finished;
+        if (gen != _generation) return;
+        final ok = await launchUrl(Uri.parse(info['song_url'] as String), mode: LaunchMode.externalApplication);
+        if (!ok) {
+          reply.text += '\n(Couldn\'t open the battle song link.)';
+          notifyListeners();
+        }
       } else {
-        reply.text += '\n(No battle song set yet. Add kaiju_song_path to the hub\'s config.json.)';
+        reply.text += '\n(No battle song set yet. Add kaiju_song_path or kaiju_song_url to the hub\'s config.json.)';
         notifyListeners();
         await mouth.finished;
       }
