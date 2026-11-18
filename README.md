@@ -22,7 +22,7 @@ Gipsy is a real installed app (not a website) that talks to the AI running on yo
 | "Hey Gipsy" | While the app is open, Gipsy sleeps with its visor dark. Say "Hey Gipsy" and the visor turns orange. "Hey Gipsy, what's 12 times 9?" works in one go. |
 | Conversation mode | After answering, Gipsy listens for a follow-up. If you stay quiet it goes back to sleep. |
 | Brains | Use the bolt menu (top left) to switch between **Daily** (qwen3:8b, fast) and **Deep** (qwen3:14b, which thinks first). Any other model in Ollama shows up there too. |
-| Kaiju alert | Say **"Hey Gipsy, there's a kaiju"**. The visor goes to battle mode, Gipsy says its battle line, then plays your battle song (slowed). Tap the visor to stop it. |
+| Kaiju alert | Say **"Hey Gipsy, there's a kaiju"**. Gipsy says a battle line in its own voice, then plays your battle song (slowed) while the visor pulses to the beat. Tap the visor to stop it. |
 | Home and away | The app tries your home Wi-Fi address first, then your Tailscale address. |
 
 ### Visor states
