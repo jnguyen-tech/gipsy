@@ -40,3 +40,24 @@ class ChatQualityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class KaijuClipTests(unittest.TestCase):
+    def test_seconds(self):
+        import gipsy_hub
+
+        self.assertEqual(gipsy_hub.seconds(90), 90)
+        self.assertEqual(gipsy_hub.seconds("1:30"), 90)
+        self.assertEqual(gipsy_hub.seconds("0:01:30"), 90)
+        self.assertEqual(gipsy_hub.seconds("soon"), 0)
+
+    def test_youtube_links_get_start_and_end(self):
+        import gipsy_hub
+
+        clip = gipsy_hub.clip_link
+        vid = "dQw4w9WgXcQ"
+        for url in (f"https://www.youtube.com/watch?v={vid}&t=5", f"https://youtu.be/{vid}?si=x", f"https://youtube.com/shorts/{vid}"):
+            self.assertEqual(clip(url, 60, 45), f"https://www.youtube.com/embed/{vid}?start=60&end=105&autoplay=1")
+        self.assertEqual(clip(f"https://youtu.be/{vid}", 0, 30), f"https://www.youtube.com/embed/{vid}?end=30&autoplay=1")
+        self.assertEqual(clip(f"https://youtu.be/{vid}", 0, 0), f"https://youtu.be/{vid}")  # nothing to trim
+        self.assertEqual(clip("https://open.spotify.com/track/abc", 10, 10), "https://open.spotify.com/track/abc")
