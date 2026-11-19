@@ -33,7 +33,7 @@ flowchart LR
     B[Windows / Mac / Linux] -- Wi-Fi or Tailscale --> H
     subgraph PC[My PC: RTX 3060]
         H[Gipsy Hub<br/>FastAPI :8765] --> O[(Ollama<br/>qwen3:8b daily<br/>qwen3:14b deep)]
-        H --> P[Piper voice<br/>deep British male]
+        H --> P[Piper / Kokoro voice<br/>Gipsy's own deep British voice]
         H --> W[Whisper<br/>speech to text]
         H --> T[Tools + RAG<br/>news, prices, lessons]
     end
@@ -49,7 +49,7 @@ flowchart LR
 | Feature | How |
 |---|---|
 | Chat | Type or talk. Replies stream in word by word. |
-| Voice out | A deep British male voice: Piper `en_GB-alan-medium`, pitched down 10% on the PC. Gipsy starts talking after the first sentence, without waiting for the whole answer. |
+| Voice out | Gipsy's own deep, warm, gravelly British voice, made on the PC by reshaping stock voices (pitch, pace, warmth, grit). Pick from several in Settings > Voice, with a preview button. Gipsy starts talking after the first phrase, without waiting for the whole answer. See [docs/VOICE.md](docs/VOICE.md). |
 | Voice in | Tap the visor or the mic. Whisper on the PC writes down what you said. |
 | "Hey Gipsy" | While the app is open, Gipsy sleeps with its visor dark. Say "Hey Gipsy" and the visor turns orange. "Hey Gipsy, what's 12 times 9?" works in one go. |
 | Conversation mode | After answering, Gipsy listens for a follow-up. If you stay quiet it goes back to sleep. |
@@ -170,8 +170,7 @@ The step-by-step guide for first-time Docker users (installing Docker Desktop, P
 ``` You can change what Gipsy says with `kaiju_line`. Restart the hub after editing.
 
 **Settings** live in `gipsy_hub/config.json`, which is created on the first run:
-* `voice_pitch`: 0.90 by default. Lower is deeper. 0.85 is a big mech, 1.0 is natural.
-* `voice`: try `en_GB-northern_english_male-medium` for a different British male.
+* `voice_preset`: `commander` by default. See [docs/VOICE.md](docs/VOICE.md) for every voice and how to fine-tune pitch, pace, warmth and grit.
 * `daily_model` / `deep_model`: which Ollama models to use.
 * `whisper_model`: `base.en` (fast) or `small.en` (more accurate).
 * `api_key`: set any password here and enter the same one in the app.
@@ -302,5 +301,6 @@ gipsy_hub/
 docker-compose.yml   hub + Open WebUI (+ Home Assistant) in one command
 .env.example         settings for docker-compose (copy to .env)
 docs/DOCKER.md       beginner's guide to the Docker setup
+docs/VOICE.md        Gipsy's voices, sample clips, speed tips
 docs/images/         screenshots and renders used in this README
 ```

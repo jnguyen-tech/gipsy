@@ -28,6 +28,16 @@ void main() {
     expect(out, ['Hello John. Ok.', 'Systems are all nominal today!', 'Bye']);
   });
 
+  test('first piece can end at a comma so Gipsy starts talking sooner', () {
+    final sp = SentenceSplitter();
+    final out = <String>[];
+    for (final tok in ['Right then John, ', 'your week is looking rather busy, ', 'with three deadlines. ', 'First up']) {
+      out.addAll(sp.add(tok));
+    }
+    out.add(sp.flush());
+    expect(out, ['Right then John, your week is looking rather busy,', 'with three deadlines.', 'First up']);
+  });
+
   test('kaiju alert phrase', () {
     expect(kaijuPhrase.hasMatch(afterWakePhrase("Hey Gipsy, there's a kaiju!")!), isTrue);
     expect(kaijuPhrase.hasMatch('Kaiju alert'), isTrue);

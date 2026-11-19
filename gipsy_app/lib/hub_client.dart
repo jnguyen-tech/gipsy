@@ -22,6 +22,20 @@ class HubInfo {
   List<String> get models => (json['models'] as List? ?? []).cast<String>();
   String get dailyModel => json['daily_model'] as String? ?? 'qwen3:8b';
   String get deepModel => json['deep_model'] as String? ?? 'qwen3:14b';
+
+  /// Things that failed to load on the PC, e.g. {"hearing": "..."}.
+  Map<String, String> get problems =>
+      (json['problems'] as Map? ?? {}).map((k, v) => MapEntry(k.toString(), v.toString()));
+}
+
+/// The hub's reason for an error ({"detail": "..."}), or null.
+String? hubDetail(http.Response r) {
+  try {
+    final d = (jsonDecode(r.body) as Map?)?['detail'];
+    return d is String && d.isNotEmpty ? d : null;
+  } catch (_) {
+    return null;
+  }
 }
 
 /// Talks to Gipsy Hub on the PC. Tries home Wi-Fi first, then Tailscale.
@@ -92,17 +106,40 @@ class HubClient {
   }
 
   /// Text -> WAV bytes in Gipsy's voice.
-  Future<Uint8List> speak(String text) async {
+  /// [preset] tries another voice (a preview) without switching to it.
+  Future<Uint8List> speak(String text, {String? preset}) async {
     final base = await _base();
     final r = await _http
         .post(
           Uri.parse('$base/api/tts'),
           headers: {..._headers, 'Content-Type': 'application/json'},
-          body: jsonEncode({'text': text}),
+          body: jsonEncode({'text': text, 'preset': ?preset}),
         )
         .timeout(const Duration(seconds: 60));
-    if (r.statusCode != 200) throw HubException('Voice failed (${r.statusCode})');
+    if (r.statusCode != 200) throw HubException(hubDetail(r) ?? 'Voice failed (${r.statusCode})');
     return r.bodyBytes;
+  }
+
+  /// Every voice the hub has: [{id, label, about, available, why, current}].
+  Future<List<Map<String, dynamic>>> voices() async {
+    final base = await _base();
+    final r = await _http.get(Uri.parse('$base/api/voices'), headers: _headers).timeout(const Duration(seconds: 10));
+    if (r.statusCode == 404) throw HubException('Update Gipsy Hub on the PC to pick voices from the app.');
+    if (r.statusCode != 200) throw HubException(hubDetail(r) ?? 'Couldn\'t load voices (${r.statusCode})');
+    return ((jsonDecode(r.body) as Map)['voices'] as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Makes [preset] Gipsy's voice on every device (saved on the PC).
+  Future<void> setVoice(String preset) async {
+    final base = await _base();
+    final r = await _http
+        .post(
+          Uri.parse('$base/api/voice'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({'preset': preset}),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (r.statusCode != 200) throw HubException(hubDetail(r) ?? 'Couldn\'t change the voice (${r.statusCode})');
   }
 
   /// Recorded WAV file -> text.
@@ -112,7 +149,7 @@ class HubClient {
       ..headers.addAll(_headers)
       ..files.add(await http.MultipartFile.fromPath('audio', wavPath, filename: 'clip.wav'));
     final res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 60)));
-    if (res.statusCode != 200) throw HubException('Hearing failed (${res.statusCode})');
+    if (res.statusCode != 200) throw HubException('Hearing failed: ${hubDetail(res) ?? res.statusCode}');
     return ((jsonDecode(res.body) as Map)['text'] as String? ?? '').trim();
   }
 

@@ -293,9 +293,14 @@ String? afterWakePhrase(String heard) {
 }
 
 /// Splits streamed text into speakable sentences.
+///
+/// The very first piece is allowed to end at a comma once it's long enough,
+/// so Gipsy starts talking sooner instead of waiting for a long sentence.
 class SentenceSplitter {
   final StringBuffer _buf = StringBuffer();
   static final _end = RegExp(r'([.!?]+["”’)]?\s+|\n{2,}|:\s*\n)');
+  static final _pause = RegExp(r'[,;]\s+|\s[-–—]\s');
+  bool _started = false;
 
   /// Feed new text; returns any complete sentences.
   List<String> add(String text) {
@@ -310,6 +315,15 @@ class SentenceSplitter {
       out.add(piece);
       last = m.end;
     }
+    if (!_started && out.isEmpty && s.length >= 40) {
+      for (final m in _pause.allMatches(s)) {
+        if (m.start < 25) continue;
+        out.add(s.substring(0, m.end).trim());
+        last = m.end;
+        break;
+      }
+    }
+    if (out.isNotEmpty) _started = true;
     _buf
       ..clear()
       ..write(s.substring(last));
@@ -320,6 +334,7 @@ class SentenceSplitter {
   String flush() {
     final s = _buf.toString().trim();
     _buf.clear();
+    _started = false;
     return s;
   }
 }

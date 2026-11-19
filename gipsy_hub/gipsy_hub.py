@@ -18,13 +18,13 @@ Run:  python gipsy_hub.py          (see README.md for setup)
 from __future__ import annotations
 
 import asyncio
-import io
 import json
 import logging
 import os
 import re
 import tempfile
-import urllib.request
+import threading
+import time
 import wave
 from datetime import datetime
 from pathlib import Path
@@ -38,6 +38,7 @@ from pydantic import BaseModel
 from knowledge import KnowledgePack
 import markets
 import briefing
+import voice as voice_mod
 import tools as _tools_module
 from tools import TOOLS, describe_call, run_tool
 
@@ -69,16 +70,29 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "deep_model": "qwen3:14b",
     "context_length": 16384,
     "keep_alive": "15m",
-    # Piper voice. en_GB-alan-medium is a calm British male.
+    # Gipsy's voice. See voice.py for the list (or GET /api/voices):
+    # "commander" (default, Piper), "marshal" (best, needs Kokoro), "classic"...
+    "voice_preset": "commander",
+    # Optional fine-tuning of the chosen preset. null = use the preset's value.
+    # pitch < 1 is deeper, pace > 1 talks faster, warmth/grit go from 0 to 1.
+    "voice_pitch_override": None,
+    "voice_pace_override": None,
+    "voice_warmth_override": None,
+    "voice_grit_override": None,
+    # Run Piper on the graphics card (needs onnxruntime-gpu). The CPU is
+    # idle while qwen3 runs on the GPU, so CPU is usually the better choice.
+    "voice_use_gpu": False,
+    # Used only by the "classic" preset (the voice from before).
     "voice": "en_GB-alan-medium",
-    # < 1.0 lowers the pitch (deeper). 0.90 is a good "big robot" setting.
     "voice_pitch": 0.90,
-    # > 1.0 speaks slower. Applied before the pitch trick.
     "voice_speed": 1.0,
     # Whisper model for speech-to-text. base.en is fast on CPU; small.en is
     # more accurate. "cpu" keeps the GPU free for the LLM.
     "whisper_model": "base.en",
     "whisper_device": "cpu",
+    # Load the daily model into the graphics card when the hub starts, so
+    # your first question doesn't wait for it.
+    "preload_model": True,
     # "Hey Gipsy, there's a kaiju" easter egg. Gipsy says this line in its own
     # voice, then plays your battle song. Point kaiju_song_path at an audio
     # file you own (mp3/m4a/wav), e.g. D:\\Music\\battle-song.mp3.
@@ -171,45 +185,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 # ------------------------------------------------------------------- TTS ----
 
-_voice = None
+VOICE = voice_mod.Voice(CFG, VOICES_DIR)
 _voice_lock = asyncio.Lock()
-
-
-def _voice_paths(name: str) -> tuple[Path, Path]:
-    return VOICES_DIR / f"{name}.onnx", VOICES_DIR / f"{name}.onnx.json"
-
-
-def ensure_voice(name: str) -> Path:
-    """Download the Piper voice from Hugging Face the first time."""
-    onnx, cfg = _voice_paths(name)
-    if onnx.exists() and cfg.exists():
-        return onnx
-    m = re.match(r"^(?P<lang>[a-z]{2})_(?P<region>[A-Z]{2})-(?P<voice>[a-z0-9_]+)-(?P<q>x_low|low|medium|high)$", name)
-    if not m:
-        raise RuntimeError(f"Voice name {name!r} doesn't look like en_GB-alan-medium")
-    VOICES_DIR.mkdir(exist_ok=True)
-    code = f"{m['lang']}_{m['region']}"
-    base = (
-        "https://huggingface.co/rhasspy/piper-voices/resolve/main/"
-        f"{m['lang']}/{code}/{m['voice']}/{m['q']}/{name}"
-    )
-    for ext, dest in ((".onnx", onnx), (".onnx.json", cfg)):
-        log.info("Downloading voice file %s%s ...", name, ext)
-        part = dest.with_suffix(dest.suffix + ".part")
-        urllib.request.urlretrieve(base + ext + "?download=true", part)
-        part.replace(dest)
-    return onnx
-
-
-def get_voice():
-    global _voice
-    if _voice is None:
-        from piper import PiperVoice
-
-        _voice = PiperVoice.load(ensure_voice(CFG["voice"]))
-        log.info("Piper voice loaded: %s", CFG["voice"])
-    return _voice
-
+# What went wrong while loading the voice / Whisper, shown in /api/health.
+PROBLEMS: dict[str, str] = {}
 
 _MD = re.compile(r"[*_`#>|~]+")
 _THINK = re.compile(r"<think>.*?</think>", re.S)
@@ -222,36 +201,23 @@ def clean_for_speech(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def synthesize_wav(text: str) -> bytes:
-    """Piper -> 16-bit mono WAV bytes, pitched down for a deeper voice.
+def synthesize_wav(text: str, preset: Optional[str] = None) -> bytes:
+    """Text -> WAV in Gipsy's voice (see voice.py for presets and effects)."""
+    return VOICE.synthesize(text, preset)
 
-    Pitch trick: we make Piper speak faster by the pitch factor, then label
-    the WAV with a lower sample rate. Played back, the voice is deeper but
-    at the normal speed, with zero extra processing.
-    """
-    from piper import SynthesisConfig
 
-    voice = get_voice()
-    pitch = float(CFG.get("voice_pitch", 1.0))
-    speed = float(CFG.get("voice_speed", 1.0))
-    base = getattr(voice.config, "length_scale", 1.0) or 1.0
-    syn = SynthesisConfig(length_scale=base * speed * pitch)
-    pcm = bytearray()
-    rate = voice.config.sample_rate
-    for chunk in voice.synthesize(text, syn_config=syn):
-        rate = chunk.sample_rate
-        pcm += chunk.audio_int16_bytes
-    buf = io.BytesIO()
-    with wave.open(buf, "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(int(rate * pitch))
-        w.writeframes(bytes(pcm))
-    return buf.getvalue()
+def save_config_value(key: str, value: Any) -> None:
+    """Change one setting in config.json and keep everything else."""
+    path = DATA_DIR / "config.json"
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    data[key] = value
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    CFG[key] = value
 
 
 class TtsIn(BaseModel):
     text: str
+    preset: Optional[str] = None  # try another voice without switching to it
 
 
 @app.post("/api/tts", dependencies=[Depends(check_key)])
@@ -259,38 +225,112 @@ async def tts(body: TtsIn) -> Response:
     text = clean_for_speech(body.text)
     if not text:
         raise HTTPException(400, "Nothing to say")
-    async with _voice_lock:
-        wav = await asyncio.to_thread(synthesize_wav, text)
+    if body.preset and body.preset not in voice_mod.PRESETS:
+        raise HTTPException(400, f"No voice called {body.preset}")
+    try:
+        async with _voice_lock:
+            wav = await asyncio.to_thread(synthesize_wav, text, body.preset)
+    except voice_mod.VoiceUnavailable as e:
+        raise HTTPException(409, str(e))
+    except Exception as e:
+        log.exception("Voice failed")
+        raise HTTPException(500, f"Voice failed: {type(e).__name__}: {e}")
     return Response(content=wav, media_type="audio/wav")
+
+
+@app.get("/api/voices", dependencies=[Depends(check_key)])
+async def voices() -> dict[str, Any]:
+    return {"current": VOICE.preset_name, "voices": VOICE.list()}
+
+
+class VoicePick(BaseModel):
+    preset: str
+
+
+@app.post("/api/voice", dependencies=[Depends(check_key)])
+async def pick_voice(body: VoicePick) -> dict[str, Any]:
+    if body.preset not in voice_mod.PRESETS:
+        raise HTTPException(400, f"No voice called {body.preset}")
+    ok, why = VOICE.available(body.preset)
+    if not ok:
+        raise HTTPException(409, why)
+    save_config_value("voice_preset", body.preset)
+    log.info("Voice changed to %s", body.preset)
+    return {"current": body.preset}
 
 
 # ------------------------------------------------------------------- STT ----
 
 _whisper = None
+_whisper_lock = threading.Lock()
 
 
 def get_whisper():
+    """Load Whisper once. If the fast settings don't work on this PC, fall
+    back to safer ones instead of failing."""
     global _whisper
-    if _whisper is None:
+    with _whisper_lock:
+        if _whisper is not None:
+            return _whisper
         from faster_whisper import WhisperModel
 
         device = CFG.get("whisper_device", "cpu")
-        compute = "int8" if device == "cpu" else "float16"
-        _whisper = WhisperModel(CFG["whisper_model"], device=device, compute_type=compute)
-        log.info("Whisper loaded: %s on %s", CFG["whisper_model"], device)
-    return _whisper
+        tries = [(device, "int8" if device == "cpu" else "float16")]
+        if tries[0] != ("cpu", "int8"):
+            tries.append(("cpu", "int8"))
+        tries.append(("cpu", "float32"))
+        last: Optional[Exception] = None
+        for dev, compute in tries:
+            try:
+                _whisper = WhisperModel(CFG["whisper_model"], device=dev, compute_type=compute)
+                log.info("Whisper loaded: %s on %s (%s)", CFG["whisper_model"], dev, compute)
+                PROBLEMS.pop("hearing", None)
+                return _whisper
+            except Exception as e:
+                log.warning("Whisper on %s/%s didn't load: %s", dev, compute, e)
+                last = e
+        raise RuntimeError(f"Whisper couldn't load ({type(last).__name__}: {last})")
+
+
+def read_wav_16k(path: str):
+    """Read a 16-bit WAV into the float array Whisper wants (16 kHz mono).
+
+    Doing this ourselves avoids the audio decoder library, which is the most
+    common thing to break on Windows. Returns None for non-WAV files, so
+    Whisper can try them itself.
+    """
+    import numpy as np
+
+    try:
+        with wave.open(path, "rb") as w:
+            rate, ch, width = w.getframerate(), w.getnchannels(), w.getsampwidth()
+            raw = w.readframes(w.getnframes())
+    except (wave.Error, EOFError):
+        return None
+    if width != 2 or not raw:
+        return None
+    x = np.frombuffer(raw[: len(raw) // (2 * ch) * 2 * ch], dtype="<i2").astype(np.float32) / 32768.0
+    if ch > 1:
+        x = x.reshape(-1, ch).mean(axis=1)
+    if rate != 16000 and x.size:
+        n = int(round(x.size * 16000 / rate))
+        x = np.interp(np.linspace(0, x.size - 1, n), np.arange(x.size), x).astype(np.float32)
+    return x
 
 
 def transcribe_file(path: str) -> str:
-    segments, _ = get_whisper().transcribe(
-        path,
-        language="en",
-        beam_size=1,
-        vad_filter=True,
-        # Nudges Whisper to spell the wake word the same way every time.
-        initial_prompt="Hey Gipsy.",
-    )
-    return " ".join(s.text.strip() for s in segments).strip()
+    audio = read_wav_16k(path)
+    source = audio if audio is not None else path
+    model = get_whisper()
+    opts = dict(language="en", beam_size=1, initial_prompt="Hey Gipsy.")  # nudges the spelling
+    try:
+        segments, _ = model.transcribe(source, vad_filter=True, **opts)
+        return " ".join(s.text.strip() for s in segments).strip()
+    except Exception as e:
+        # The silence filter needs onnxruntime; try once without it.
+        log.warning("Whisper with silence filter failed (%s); retrying without it", e)
+        segments, _ = model.transcribe(source, vad_filter=False, **opts)
+        return " ".join(s.text.strip() for s in segments).strip()
 
 
 _stt_lock = asyncio.Lock()
@@ -306,11 +346,21 @@ async def stt(audio: UploadFile = File(...)) -> dict[str, str]:
         f.write(data)
         tmp = f.name
     try:
+        t = time.perf_counter()
         async with _stt_lock:
             text = await asyncio.to_thread(transcribe_file, tmp)
+    except Exception as e:
+        # Print the full error in the hub window AND tell the app why.
+        log.exception("Hearing failed")
+        reason = f"{type(e).__name__}: {e}"
+        PROBLEMS["hearing"] = reason
+        raise HTTPException(500, reason[:400])
     finally:
-        os.unlink(tmp)
-    log.info("Heard: %r", text)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    log.info("Heard (%.1f s): %r", time.perf_counter() - t, text)
     return {"text": text}
 
 
@@ -382,6 +432,8 @@ async def stream_ollama(body: ChatIn) -> AsyncIterator[bytes]:
         return (json.dumps({"type": kind, **kw}) + "\n").encode()
 
     yield ev("start", model=model, think=think)
+    t0 = time.perf_counter()
+    first_word: Optional[float] = None
 
     try:
         notes, titles = await knowledge_for(history)
@@ -429,6 +481,9 @@ async def stream_ollama(body: ChatIn) -> AsyncIterator[bytes]:
                         if msg.get("thinking"):
                             yield ev("thinking", text=msg["thinking"])
                         if msg.get("content"):
+                            if first_word is None:
+                                first_word = time.perf_counter() - t0
+                                log.info("First words from %s after %.1f s", model, first_word)
                             content += msg["content"]
                             yield ev("token", text=msg["content"])
                         if msg.get("tool_calls"):
@@ -436,6 +491,7 @@ async def stream_ollama(body: ChatIn) -> AsyncIterator[bytes]:
                         if chunk.get("done"):
                             break
                 if not calls:
+                    log.info("Reply finished in %.1f s (%d chars)", time.perf_counter() - t0, len(content))
                     yield ev("done", model=model)
                     return
                 messages.append({"role": "assistant", "content": content, "tool_calls": calls})
@@ -593,24 +649,52 @@ async def health() -> dict[str, Any]:
         "models": models,
         "daily_model": CFG["daily_model"],
         "deep_model": CFG["deep_model"],
-        "voice": CFG["voice"],
+        "voice": VOICE.preset_name,
+        "voice_engine": voice_mod.PRESETS[VOICE.preset_name]["engine"],
+        # Anything that failed to load, e.g. {"hearing": "..."}. Empty = all good.
+        "problems": dict(PROBLEMS),
         "tools": [t["function"]["name"] for t in TOOLS] if CFG.get("tools_enabled", True) else [],
         "knowledge_sections": len(KNOWLEDGE.chunks),
         "knowledge_mode": "embeddings" if KNOWLEDGE.use_vectors else "keywords",
     }
 
 
+async def preload_model() -> None:
+    """Ask Ollama to load the daily model now (an empty request just loads it)."""
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180, connect=5)) as client:
+            t = time.perf_counter()
+            await client.post(
+                f"{CFG['ollama_url']}/api/generate",
+                json={"model": CFG["daily_model"], "keep_alive": CFG["keep_alive"]},
+            )
+            log.info("%s is loaded and ready (%.1f s)", CFG["daily_model"], time.perf_counter() - t)
+    except Exception as e:
+        log.warning("Couldn't preload %s: %s", CFG["daily_model"], e)
+
+
 @app.on_event("startup")
 async def warm_up() -> None:
-    # Load the voice + whisper in the background so the first request is fast.
+    # Load the voice + Whisper in the background so the first request is fast.
     async def _load() -> None:
-        for fn in (get_voice, get_whisper):
-            try:
-                await asyncio.to_thread(fn)
-            except Exception as e:
-                log.warning("Warm-up of %s failed: %s", fn.__name__, e)
+        try:
+            await asyncio.to_thread(VOICE.load)
+            PROBLEMS.pop("voice", None)
+        except Exception as e:
+            PROBLEMS["voice"] = f"{type(e).__name__}: {e}"
+            log.warning("Voice %s didn't load: %s", VOICE.preset_name, e)
+            if voice_mod.PRESETS[VOICE.preset_name]["engine"] != "piper":
+                log.warning("Falling back to the commander voice for now.")
+                CFG["voice_preset"] = voice_mod.DEFAULT_PRESET
+        try:
+            await asyncio.to_thread(get_whisper)
+        except Exception as e:
+            PROBLEMS["hearing"] = f"{type(e).__name__}: {e}"
+            log.exception("Whisper (hearing) didn't load")
 
     asyncio.create_task(_load())
+    if CFG.get("preload_model", True):
+        asyncio.create_task(preload_model())
     if CFG.get("knowledge_enabled", True):
         asyncio.create_task(KNOWLEDGE.build_index())
 
