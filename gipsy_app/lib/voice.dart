@@ -190,7 +190,16 @@ class Mouth {
 
   /// Plays a music file (the kaiju battle song) at [rate] (0.85 = slowed).
   /// The visor bounces to a steady beat while it plays.
-  Future<void> playMusic(Uint8List bytes, String ext, {double rate = 1.0}) async {
+  ///
+  /// [start] skips into the song; [duration] (if > 0) stops it after that
+  /// many seconds of listening, fading out over the last 2 seconds.
+  Future<void> playMusic(
+    Uint8List bytes,
+    String ext, {
+    double rate = 1.0,
+    double start = 0,
+    double duration = 0,
+  }) async {
     await finished;
     final dir = await getTemporaryDirectory();
     final f = File('${dir.path}${Platform.pathSeparator}gipsy_song$ext');
@@ -202,19 +211,43 @@ class Mouth {
     _allDone ??= Completer<void>();
     speaking.value = true;
     _env = null;
-    final start = DateTime.now();
+    final start0 = DateTime.now();
     _musicPulse = Timer.periodic(const Duration(milliseconds: 40), (_) {
-      final ms = DateTime.now().difference(start).inMilliseconds;
+      final ms = DateTime.now().difference(start0).inMilliseconds;
       final beat = (ms * rate / 500) % 1.0; // ~120 bpm, slowed with the song
       level.value = 0.35 + 0.65 * math.pow(1 - beat, 3).toDouble();
     });
+    Timer? fade;
     try {
+      await _player.setVolume(1.0);
       await _player.setPlaybackRate(rate);
-      await _player.play(DeviceFileSource(f.path));
+      await _player.play(
+        DeviceFileSource(f.path),
+        position: start > 0 ? Duration(milliseconds: (start * 1000).round()) : null,
+      );
+      if (duration > 0) {
+        // Fade out over the last 2 s (or the whole clip if it's shorter),
+        // then stop, as if the song ended there.
+        const fadeMs = 2000;
+        final totalMs = (duration * 1000).round();
+        final fadeStart = math.max(0, totalMs - fadeMs);
+        fade = Timer.periodic(const Duration(milliseconds: 100), (t) {
+          final ms = DateTime.now().difference(start0).inMilliseconds;
+          if (ms >= totalMs) {
+            t.cancel();
+            _player.stop();
+            if (!done.isCompleted) done.complete();
+          } else if (ms >= fadeStart) {
+            _player.setVolume(1 - (ms - fadeStart) / math.max(1, totalMs - fadeStart));
+          }
+        });
+      }
       await done.future;
     } catch (e) {
       debugPrint('Music failed: $e');
     } finally {
+      fade?.cancel();
+      await _player.setVolume(1.0);
       _musicPulse?.cancel();
       await sub.cancel();
       await _player.setPlaybackRate(1.0);

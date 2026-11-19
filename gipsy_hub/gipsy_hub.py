@@ -104,6 +104,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     # Used only when kaiju_song_path is empty.
     "kaiju_song_url": "",
     "kaiju_song_rate": 0.85,
+    # Play only part of the song. Seconds (90) or minutes:seconds ("1:30").
+    # start = where in the song to begin; duration = how long to play it for
+    # (0 = to the end). The last 2 seconds fade out. Works for a local file;
+    # for a YouTube link the hub turns these into a start/end link.
+    "kaiju_song_start": 0,
+    "kaiju_song_duration": 0,
     # Let the model call tools (news, web search, prices, EMAs, FRED data).
     "tools_enabled": True,
     "max_tool_rounds": 4,
@@ -561,15 +567,52 @@ async def chat(body: ChatIn) -> StreamingResponse:
 # ------------------------------------------------------------- kaiju alert --
 
 
+def seconds(value: Any) -> float:
+    """90, "90", "1:30" or "0:01:30" -> seconds. Anything else -> 0."""
+    if isinstance(value, (int, float)):
+        return max(0.0, float(value))
+    total = 0.0
+    try:
+        for part in str(value or "0").strip().split(":"):
+            total = total * 60 + float(part or 0)
+    except ValueError:
+        return 0.0
+    return max(0.0, total)
+
+
+_YT_ID = re.compile(
+    r"(?:youtube\.com/(?:watch\?(?:.*&)?v=|shorts/|embed/|live/)|youtu\.be/)([A-Za-z0-9_-]{11})"
+)
+
+
+def clip_link(url: str, start: float, duration: float) -> str:
+    """Turn a YouTube link into one that starts at `start` and stops after
+    `duration` seconds. YouTube's normal links can only set a start (t=), but
+    its embed player understands both start= and end=. Other links (Spotify,
+    SoundCloud...) can't be trimmed from outside, so they're left alone."""
+    m = _YT_ID.search(url or "")
+    if not m or (start <= 0 and duration <= 0):
+        return url
+    params = [f"start={int(start)}"] if start > 0 else []
+    if duration > 0:
+        params.append(f"end={int(start + duration)}")
+    params.append("autoplay=1")
+    return f"https://www.youtube.com/embed/{m.group(1)}?" + "&".join(params)
+
+
 @app.get("/api/kaiju", dependencies=[Depends(check_key)])
 async def kaiju() -> dict[str, Any]:
     song = Path(CFG.get("kaiju_song_path") or "")
+    start = seconds(CFG.get("kaiju_song_start", 0))
+    duration = seconds(CFG.get("kaiju_song_duration", 0))
     return {
         "line": CFG.get("kaiju_line", ""),
         "has_song": bool(CFG.get("kaiju_song_path")) and song.is_file(),
         "song_ext": song.suffix.lower() or ".mp3",
         "rate": float(CFG.get("kaiju_song_rate", 1.0)),
-        "song_url": CFG.get("kaiju_song_url", ""),
+        "song_url": clip_link(CFG.get("kaiju_song_url", ""), start, duration),
+        "start": start,
+        "duration": duration,
     }
 
 

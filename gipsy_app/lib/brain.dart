@@ -331,6 +331,8 @@ class GipsyBrain extends ChangeNotifier {
           song,
           (info['song_ext'] as String?) ?? '.mp3',
           rate: (info['rate'] as num?)?.toDouble() ?? 1.0,
+          start: (info['start'] as num?)?.toDouble() ?? 0,
+          duration: (info['duration'] as num?)?.toDouble() ?? 0,
         );
       } else if ((info['song_url'] as String? ?? '').isNotEmpty) {
         // Open the song in YouTube / the browser once Gipsy has finished talking.

@@ -167,7 +167,16 @@ The step-by-step guide for first-time Docker users (installing Docker Desktop, P
 ```json
 "kaiju_song_path": "",
 "kaiju_song_url": "https://www.youtube.com/watch?v=..."
-``` You can change what Gipsy says with `kaiju_line`. Restart the hub after editing.
+```
+
+**Play only part of the song:** set where to start and how long to play, in seconds (`90`) or minutes:seconds (`"1:30"`):
+```json
+"kaiju_song_start": "0:45",
+"kaiju_song_duration": 30
+```
+That plays 30 seconds starting at 0:45. With a file, the app skips to 0:45, plays for 30 seconds of listening time (even when slowed down by `kaiju_song_rate`), and fades out over the last 2 seconds. With a YouTube link, the hub turns it into a YouTube player link with a start and end time. Normal YouTube links can only set a start, but YouTube's embed player can also stop at an end time. Spotify and other links can't be trimmed from outside, so they play from the start. `0` means "from the start" or "to the end".
+
+You can change what Gipsy says with `kaiju_line`. Restart the hub after editing.
 
 **Settings** live in `gipsy_hub/config.json`, which is created on the first run:
 * `home_location`: your city for weather questions, e.g. `"Oklahoma City"` (empty = Gipsy asks).
