@@ -63,11 +63,15 @@ flowchart LR
 
 | State | Look |
 |---|---|
-| Sleeping | Dark visor with a faint, slowly breathing standby line |
+| Waking up | Cinematic boot: the visor flickers, a scan line sweeps down, the side pods light one by one and HUD brackets snap in |
+| Sleeping | The glow collapses to a line and a dot like an old TV, then a faint standby line breathes |
 | Awake | Solid orange glow with a slow shimmer |
 | Listening | A live waveform that follows your voice, with sound rings at the ears |
 | Thinking | A scanner light that sweeps side to side. The Reactor Core logo spins. |
 | Speaking | Equaliser bars that bounce in time with the actual audio |
+| Kaiju alert | The visor strobes red, the head shakes, and the rings spin up |
+
+Behind the head, holographic rings turn slowly and embers drift upward. The rings spin faster while Gipsy thinks, and the scene flashes on every mode change.
 
 ![Gipsy's three logos](docs/images/logos.png)
 
@@ -87,6 +91,31 @@ Logos: the **Armored Visor** is the iPhone icon, the **Armored G** is the Window
 </table>
 
 The physical Gipsy is an original armored desk robot wearing the same helmet as the app. The head holds a StackChan-style core (screen, mic, speaker) whose visor shows the same five states, with room for MG90S servos so the head and arms can move later. The body is meant to be printed by a print service.
+
+---
+
+## This week's tasks
+
+Tap the **calendar icon** in the app, or just ask: *"Hey Gipsy, what's due this week?"*, *"Am I free Thursday?"*, *"Add a task: chem lab report due Friday"*, *"I finished the chem lab report."*
+
+Gipsy combines:
+* **Your calendars:** any iCal (`.ics`) link. Paste them into `gipsy_hub/config.json` and restart the hub:
+  ```json
+  "calendars": [
+    {"name": "School", "url": "https://<your school calendar feed>.ics", "kind": "school"},
+    {"name": "Personal", "url": "https://calendar.google.com/calendar/ical/.../basic.ics", "kind": "appointment"}
+  ]
+  ```
+  * **Google Calendar:** Settings → pick the calendar → *Integrate calendar* → copy **Secret address in iCal format**.
+  * **Canvas:** Calendar → *Calendar Feed* (bottom right) → copy the link. Schoology and most school systems have a similar "iCal feed" or "subscribe" link.
+  * **Outlook:** Settings → Calendar → Shared calendars → *Publish a calendar* → copy the ICS link.
+  * **iPhone/iCloud:** in the Calendar app, tap ⓘ next to a calendar → *Public Calendar* → share the link.
+
+  These links are private. They live only in `config.json` on your PC, which is never uploaded to GitHub.
+* **Your to-do list:** saved on the PC in `gipsy_hub/tasks.json`. Add or tick off tasks by voice or in the app.
+* **Market events:** Fed meetings, CPI and jobs reports, and earnings for the stocks you follow, from the markets module.
+
+  Running the hub in Docker? Use `docker-data/hub/config.json` instead; `tasks.json` is saved in that same folder.
 
 ---
 

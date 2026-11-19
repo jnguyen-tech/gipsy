@@ -36,6 +36,8 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from knowledge import KnowledgePack
+import briefing
+import tools as _tools_module
 from tools import TOOLS, describe_call, run_tool
 
 HERE = Path(__file__).resolve().parent
@@ -90,6 +92,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "knowledge_results": 3,
     # How close a section must be to count (embeddings, 0-1). Lower = more notes.
     "knowledge_min_score": 0.55,
+    # This week's tasks (briefing.py). Add iCal (.ics) feeds here: Google
+    # Calendar's "secret address in iCal format", your school's calendar feed
+    # (Canvas/Schoology/Classroom), Outlook or iCloud published calendars.
+    # kind: "school", "appointment" or "calendar".
+    "timezone": "America/Chicago",
+    "calendars": [],
+    "market_events_enabled": True,
     "system_prompt": (
         "You are Gipsy, a friendly robot desk companion built by John. "
         "You run fully offline on John's own PC. You speak with calm, dry "
@@ -124,6 +133,16 @@ def load_config() -> dict[str, Any]:
 
 
 CFG = load_config()
+
+# This week's tasks: calendars + to-do list (+ market events when markets.py is present).
+briefing.init(CFG)
+briefing.install_tools(_tools_module)
+try:
+    import markets  # noqa: E402
+
+    briefing.register_market_source(markets.market_events)
+except ImportError:
+    pass
 VOICES_DIR = DATA_DIR / "voices"
 KNOWLEDGE = KnowledgePack(HERE / "knowledge", CFG["ollama_url"], CFG.get("embed_model", "nomic-embed-text"))
 
@@ -480,6 +499,46 @@ async def tool_test(name: str, q: str = "") -> dict[str, Any]:
     first = {"search_news": "query", "web_search": "query", "get_price": "symbol",
              "get_emas": "symbol", "get_economic": "series"}.get(name, "query")
     return await run_tool(name, {first: q} if q else {})
+
+
+# ------------------------------------------------------------- this week ----
+
+
+@app.get("/api/week", dependencies=[Depends(check_key)])
+async def week(days: int = 7, start: str = "") -> dict[str, Any]:
+    return await briefing.week_agenda(days, start)
+
+
+class TaskIn(BaseModel):
+    title: str
+    due: str = ""
+    kind: str = "task"
+
+
+@app.get("/api/tasks", dependencies=[Depends(check_key)])
+async def tasks_list(include_done: bool = False) -> list[dict[str, Any]]:
+    return await briefing.list_tasks(include_done)
+
+
+@app.post("/api/tasks", dependencies=[Depends(check_key)])
+async def tasks_add(body: TaskIn) -> dict[str, Any]:
+    try:
+        return await briefing.add_task(body.title, body.due, body.kind)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/tasks/{task_id}/done", dependencies=[Depends(check_key)])
+async def tasks_done(task_id: str) -> dict[str, Any]:
+    try:
+        return await briefing.complete_task(task_id)
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+
+
+@app.delete("/api/tasks/{task_id}", dependencies=[Depends(check_key)])
+async def tasks_delete(task_id: str) -> dict[str, bool]:
+    return {"deleted": await briefing.delete_task(task_id)}
 
 
 # ---------------------------------------------------------------- health ----

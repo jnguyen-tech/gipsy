@@ -13,6 +13,7 @@ class ChatLine {
   final String role; // user | assistant | system
   String text;
   String thinking;
+
   /// Tools the hub used for this reply, e.g. "Checking the news: gold".
   final List<String> tools = [];
   bool get isUser => role == 'user';
@@ -28,6 +29,9 @@ class GipsyBrain extends ChangeNotifier {
   final Mouth mouth = Mouth();
 
   GipsyMode mode = GipsyMode.sleeping;
+
+  /// True while the kaiju alert is playing (visor strobes, head shakes).
+  bool kaijuActive = false;
   final List<ChatLine> lines = [];
   HubInfo? hubInfo;
   String status = 'Connecting...';
@@ -291,6 +295,16 @@ class GipsyBrain extends ChangeNotifier {
   /// "Hey Gipsy, there's a kaiju": battle line in Gipsy's voice, then the
   /// battle song from the PC. Tap the visor to stop it.
   Future<void> _kaijuAlert(String text, int gen) async {
+    kaijuActive = true;
+    try {
+      await _kaijuAlertInner(text, gen);
+    } finally {
+      kaijuActive = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> _kaijuAlertInner(String text, int gen) async {
     lines.add(ChatLine('user', text));
     final reply = ChatLine('assistant', '');
     lines.add(reply);

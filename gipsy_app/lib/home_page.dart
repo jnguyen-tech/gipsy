@@ -4,6 +4,7 @@ import 'brain.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import 'visor.dart';
+import 'week_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.brain});
@@ -64,7 +65,10 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final wide = MediaQuery.sizeOf(context).width > 820;
+    final width = MediaQuery.sizeOf(context).width;
+    // Side by side on laptops, desktops and landscape iPad; stacked on phones and portrait iPad.
+    final wide = width > 900;
+    final headWidth = (width * 0.32).clamp(380.0, 560.0);
     final head = _HeadPanel(brain: brain, modeLabel: _modeLabel);
     final chat = _ChatPanel(brain: brain, scroll: _scroll, input: _input, onSend: _send);
 
@@ -103,6 +107,11 @@ class _HomePageState extends State<HomePage> {
           leading: _ModelMenu(brain: brain),
           leadingWidth: 64,
           actions: [
+            IconButton(
+              tooltip: 'This week',
+              icon: const Icon(Icons.calendar_month_outlined),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => WeekPage(hub: brain.hub))),
+            ),
             IconButton(tooltip: 'Go to sleep', icon: const Icon(Icons.bedtime_outlined), onPressed: brain.sleepNow),
             IconButton(
               tooltip: 'Settings',
@@ -118,7 +127,7 @@ class _HomePageState extends State<HomePage> {
           child: wide
               ? Row(
                   children: [
-                    SizedBox(width: 380, child: head),
+                    SizedBox(width: headWidth, child: head),
                     Container(
                       width: 1,
                       margin: const EdgeInsets.symmetric(vertical: 24),
@@ -147,7 +156,9 @@ class _HeadPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    final visorSize = size.width > 820 ? 300.0 : (size.height < 700 ? 170.0 : 220.0);
+    final visorSize = size.width > 900
+        ? ((size.width * 0.32).clamp(380.0, 560.0) * 0.82).clamp(280.0, size.height * 0.55)
+        : (size.width >= 600 ? 320.0 : (size.height < 700 ? 170.0 : 220.0));
     final online = brain.hubInfo?.ollamaUp == true;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -163,7 +174,7 @@ class _HeadPanel extends StatelessWidget {
                 brain.wakeAndListen();
               }
             },
-            child: Visor(mode: brain.mode, level: brain.visorLevel, size: visorSize),
+            child: Visor(mode: brain.mode, level: brain.visorLevel, size: visorSize, alert: brain.kaijuActive),
           ),
           const SizedBox(height: 12),
           ChamferPanel(

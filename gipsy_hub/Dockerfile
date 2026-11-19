@@ -18,7 +18,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY gipsy_hub.py knowledge.py tools.py ./
+COPY *.py ./
 COPY knowledge ./knowledge
 
 # Run as a normal user, not root.

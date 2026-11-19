@@ -495,8 +495,14 @@ FUNCTIONS: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = {
 }
 
 
+# Other modules (briefing.py) add their own "what I'm doing" lines here.
+EXTRA_DESCRIPTIONS: dict[str, Callable[[dict[str, Any]], str]] = {}
+
+
 def describe_call(name: str, args: dict[str, Any]) -> str:
     """Short line the app shows while a tool runs."""
+    if name in EXTRA_DESCRIPTIONS:
+        return EXTRA_DESCRIPTIONS[name](args)
     a = next((str(v) for v in args.values() if v), "")
     return {
         "search_news": f"Checking the news: {a}" if a else "Checking today's headlines",
