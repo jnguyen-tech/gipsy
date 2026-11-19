@@ -131,6 +131,19 @@ class EndpointTests(unittest.TestCase):
         self.assertEqual(self.hub.VOICE.preset_name, "northern")
         self.assertIn("problems", self.client.get("/api/health").json())
 
+    def test_pace_slider(self):
+        saved = self.hub.CFG.get("voice_pace_override")
+        try:
+            r = self.client.post("/api/voice/pace", json={"pace": 1.3})
+            self.assertEqual(r.json()["pace"], 1.3)
+            self.assertEqual(self.client.get("/api/voices").json()["pace"], 1.3)
+            self.assertEqual(self.hub.VOICE.preset("northern")["pace"], 1.3)  # previews too
+            self.assertEqual(self.client.post("/api/voice/pace", json={"pace": 9}).json()["pace"], 1.6)
+            r = self.client.post("/api/voice/pace", json={"pace": None})
+            self.assertEqual(r.json()["pace"], self.hub.voice_mod.PRESETS[self.hub.VOICE.preset_name].get("pace", 1.0))
+        finally:
+            self.hub.CFG["voice_pace_override"] = saved
+
     def test_hearing_error_reaches_the_app(self):
         real = self.hub.transcribe_file
 
