@@ -9,3 +9,4 @@ gipsy_hub/tasks.json
 gipsy_hub/calendars.json
 .env
 docker-data/
+gipsy_hub/voice_samples/

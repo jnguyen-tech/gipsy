@@ -4,6 +4,9 @@ httpx>=0.27
 python-multipart>=0.0.9
 piper-tts>=1.3
 faster-whisper>=1.1
+# PyAV 19 removed an option faster-whisper uses ("metadata_errors"), which
+# broke hearing. Stay below 19 until faster-whisper catches up.
+av>=11,<19
 ddgs>=9.0
 icalendar>=6.0
 recurring-ical-events>=3.0

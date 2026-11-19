@@ -83,6 +83,9 @@ class GipsyBrain extends ChangeNotifier {
       } else {
         final via = hubInfo!.url == settings.candidateUrls.first ? 'home Wi-Fi' : 'Tailscale';
         status = 'Online via ${settings.candidateUrls.length > 1 ? via : hubInfo!.url}';
+        final problems = hubInfo!.problems;
+        if (problems.containsKey('hearing')) status += ' · hearing is broken: ${problems['hearing']}';
+        if (problems.containsKey('voice')) status += ' · voice problem: ${problems['voice']}';
       }
     } catch (e) {
       status = e.toString();

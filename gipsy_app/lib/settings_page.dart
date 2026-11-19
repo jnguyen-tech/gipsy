@@ -95,10 +95,11 @@ class _SettingsPageState extends State<SettingsPage> {
             const _Header('Voice'),
             SwitchListTile(
               title: const Text('Speak replies out loud'),
-              subtitle: const Text('Deep British voice from your PC'),
+              subtitle: const Text('Tap ▶ to hear a voice, tap a row to choose it'),
               value: s.voiceReplies,
               onChanged: (v) => setState(() => s.voiceReplies = v),
             ),
+            _VoicePicker(brain: widget.brain),
             SwitchListTile(
               title: const Text('Listen for "Hey Gipsy"'),
               subtitle: const Text('Only while the app is open'),
@@ -130,6 +131,104 @@ class _SettingsPageState extends State<SettingsPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Lists the hub's voices. Tap the play button to hear one, tap the row to
+/// make it Gipsy's voice (saved on the PC, so every device uses it).
+class _VoicePicker extends StatefulWidget {
+  const _VoicePicker({required this.brain});
+  final GipsyBrain brain;
+
+  @override
+  State<_VoicePicker> createState() => _VoicePickerState();
+}
+
+class _VoicePickerState extends State<_VoicePicker> {
+  static const _sample = 'Gipsy online. All systems green, John. What are we taking on today?';
+  List<Map<String, dynamic>>? _voices;
+  String? _error;
+  String? _busy; // voice id being previewed or switched
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final v = await widget.brain.hub.voices();
+      if (mounted) setState(() => _voices = v);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  Future<void> _preview(String id) async {
+    setState(() => _busy = id);
+    try {
+      await widget.brain.mouth.stop();
+      widget.brain.mouth.enqueue(await widget.brain.hub.speak(_sample, preset: id));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+    if (mounted) setState(() => _busy = null);
+  }
+
+  Future<void> _pick(String id) async {
+    setState(() => _busy = id);
+    try {
+      await widget.brain.hub.setVoice(id);
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+    if (mounted) setState(() => _busy = null);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return ListTile(
+        title: const Text('Gipsy\'s voice'),
+        subtitle: Text(_error!, style: const TextStyle(color: GipsyColors.steel)),
+        trailing: IconButton(icon: const Icon(Icons.refresh), onPressed: () {
+          setState(() => _error = null);
+          _load();
+        }),
+      );
+    }
+    final voices = _voices;
+    if (voices == null) {
+      return const ListTile(title: Text('Gipsy\'s voice'), subtitle: Text('Loading voices from your PC...'));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final v in voices)
+          ListTile(
+            enabled: v['available'] == true,
+            leading: Icon(
+              v['current'] == true ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+              color: v['current'] == true ? GipsyColors.amber : GipsyColors.steel,
+            ),
+            title: Text(v['label'] as String? ?? v['id'] as String),
+            subtitle: Text(
+              v['available'] == true ? (v['about'] as String? ?? '') : (v['why'] as String? ?? ''),
+              style: const TextStyle(color: GipsyColors.steel, fontSize: 12),
+            ),
+            trailing: _busy == v['id']
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : IconButton(
+                    tooltip: 'Listen',
+                    icon: const Icon(Icons.play_circle_outline),
+                    onPressed: v['available'] == true ? () => _preview(v['id'] as String) : null,
+                  ),
+            onTap: v['current'] == true ? null : () => _pick(v['id'] as String),
+          ),
+      ],
     );
   }
 }
