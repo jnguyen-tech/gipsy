@@ -121,12 +121,31 @@ class HubClient {
   }
 
   /// Every voice the hub has: [{id, label, about, available, why, current}].
-  Future<List<Map<String, dynamic>>> voices() async {
+  Future<List<Map<String, dynamic>>> voices() async =>
+      ((await voiceInfo())['voices'] as List).cast<Map<String, dynamic>>();
+
+  /// {current, pace, voices: [...]}
+  Future<Map<String, dynamic>> voiceInfo() async {
     final base = await _base();
     final r = await _http.get(Uri.parse('$base/api/voices'), headers: _headers).timeout(const Duration(seconds: 10));
     if (r.statusCode == 404) throw HubException('Update Gipsy Hub on the PC to pick voices from the app.');
     if (r.statusCode != 200) throw HubException(hubDetail(r) ?? 'Couldn\'t load voices (${r.statusCode})');
-    return ((jsonDecode(r.body) as Map)['voices'] as List).cast<Map<String, dynamic>>();
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// Talking speed: 1.0 normal, 1.25 = 25% faster. Saved on the PC.
+  Future<double> setPace(double pace) async {
+    final base = await _base();
+    final r = await _http
+        .post(
+          Uri.parse('$base/api/voice/pace'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({'pace': pace}),
+        )
+        .timeout(const Duration(seconds: 10));
+    if (r.statusCode == 404) throw HubException('Update Gipsy Hub on the PC to change the speed from the app.');
+    if (r.statusCode != 200) throw HubException(hubDetail(r) ?? 'Couldn\'t change the speed (${r.statusCode})');
+    return ((jsonDecode(r.body) as Map)['pace'] as num).toDouble();
   }
 
   /// Makes [preset] Gipsy's voice on every device (saved on the PC).

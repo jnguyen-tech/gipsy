@@ -240,7 +240,7 @@ async def tts(body: TtsIn) -> Response:
 
 @app.get("/api/voices", dependencies=[Depends(check_key)])
 async def voices() -> dict[str, Any]:
-    return {"current": VOICE.preset_name, "voices": VOICE.list()}
+    return {"current": VOICE.preset_name, "pace": VOICE.preset().get("pace", 1.0), "voices": VOICE.list()}
 
 
 class VoicePick(BaseModel):
@@ -257,6 +257,19 @@ async def pick_voice(body: VoicePick) -> dict[str, Any]:
     save_config_value("voice_preset", body.preset)
     log.info("Voice changed to %s", body.preset)
     return {"current": body.preset}
+
+
+class PaceIn(BaseModel):
+    pace: Optional[float] = None  # 1.0 = normal, 1.25 = 25% faster; null = preset's own
+
+
+@app.post("/api/voice/pace", dependencies=[Depends(check_key)])
+async def set_pace(body: PaceIn) -> dict[str, Any]:
+    """Talking speed from the app's slider, saved in config.json."""
+    pace = None if body.pace is None else round(max(0.7, min(1.6, body.pace)), 2)
+    save_config_value("voice_pace_override", pace)
+    log.info("Talking speed set to %s", pace if pace is not None else "the voice's default")
+    return {"pace": VOICE.preset().get("pace", 1.0)}
 
 
 # ------------------------------------------------------------------- STT ----

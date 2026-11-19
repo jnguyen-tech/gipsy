@@ -21,6 +21,14 @@ class Ears {
   /// Live mic level 0..1, for the listening animation.
   final ValueNotifier<double> level = ValueNotifier(0);
 
+  /// Live mic loudness in dBFS (0 = loudest, -90 = silence), for the mic test.
+  final ValueNotifier<double> db = ValueNotifier(-90);
+
+  /// How loud the room is right now (dBFS). Speech must be louder than
+  /// [threshold] for Gipsy to start recording.
+  double get noiseFloor => _noiseFloor;
+  double get threshold => math.max(_noiseFloor + 10, -58.0);
+
   double _noiseFloor = -50; // dBFS, adapts to the room
   bool get isRecording => _busy;
 
@@ -57,8 +65,9 @@ class Ears {
 
     _ampSub = _rec.onAmplitudeChanged(const Duration(milliseconds: 80)).listen((a) {
       final db = a.current.isFinite ? a.current.clamp(-90.0, 0.0) : -90.0;
-      final threshold = math.max(_noiseFloor + 12, -48.0);
+      // Quiet PC mics often peak around -50 dBFS, so the floor is low.
       final loud = db > threshold;
+      this.db.value = db;
       level.value = ((db - _noiseFloor) / 35).clamp(0.0, 1.0);
       final now = DateTime.now();
       if (!loud && speechStart == null) {

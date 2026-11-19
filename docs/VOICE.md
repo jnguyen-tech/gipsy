@@ -56,7 +56,13 @@ the PC, so your iPhone and laptop switch too.
 
 You can also set `"voice_preset": "marshal"` in `config.json` and restart.
 
-### 5. Fine-tune (optional)
+### 5. Talking speed
+Settings > Voice > **Talking speed** slider (80% to 150%). It's saved on the
+PC as `voice_pace_override` in `config.json`, so every device uses it and
+previews play at that speed too. Pitch stays the same, because the hub changes
+pitch and speed separately.
+
+### 6. Fine-tune (optional)
 In `config.json`, these change the chosen voice without touching code
 (`null` = use the preset's value):
 
@@ -110,6 +116,11 @@ its licence doesn't allow commercial use, and it's much slower. Kokoro gives
 better quality for Gipsy at a fraction of the cost.
 
 ## If something goes wrong
+
+* **Gipsy doesn't hear me:** Settings > **Test microphone**. It listens for
+  one phrase and tells you which part failed: Windows blocking the mic, the
+  mic being too quiet (it shows your loudest level against what Gipsy needs),
+  or the PC not understanding the words.
 
 * **"Hearing failed: ..."** The app now shows the hub's real reason. The hub
   window also prints the full error. Re-run `install_hub.bat` first.

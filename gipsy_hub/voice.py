@@ -242,10 +242,15 @@ class Voice:
             )
         elif name == self.preset_name:
             # Fine-tune the chosen preset from config.json without editing code.
-            for key in ("pitch", "pace", "warmth", "grit"):
+            for key in ("pitch", "warmth", "grit"):
                 v = self.cfg.get(f"voice_{key}_override")
                 if v is not None:
                     p[key] = float(v)
+        # Talking speed (the slider in the app) applies to every voice, so
+        # previews sound as fast as the real thing.
+        v = self.cfg.get("voice_pace_override")
+        if v is not None:
+            p["pace"] = float(v)
         p["name"] = name
         return p
 

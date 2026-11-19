@@ -112,6 +112,7 @@ class _SettingsPageState extends State<SettingsPage> {
               value: s.conversationMode,
               onChanged: (v) => setState(() => s.conversationMode = v),
             ),
+            _MicTest(brain: widget.brain),
             const _Header('Brain'),
             SwitchListTile(
               title: const Text('Show thinking'),
@@ -148,6 +149,7 @@ class _VoicePicker extends StatefulWidget {
 class _VoicePickerState extends State<_VoicePicker> {
   static const _sample = 'Gipsy online. All systems green, John. What are we taking on today?';
   List<Map<String, dynamic>>? _voices;
+  double? _pace;
   String? _error;
   String? _busy; // voice id being previewed or switched
 
@@ -159,8 +161,13 @@ class _VoicePickerState extends State<_VoicePicker> {
 
   Future<void> _load() async {
     try {
-      final v = await widget.brain.hub.voices();
-      if (mounted) setState(() => _voices = v);
+      final info = await widget.brain.hub.voiceInfo();
+      if (mounted) {
+        setState(() {
+          _voices = (info['voices'] as List).cast<Map<String, dynamic>>();
+          _pace = (info['pace'] as num?)?.toDouble();
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
@@ -188,6 +195,31 @@ class _VoicePickerState extends State<_VoicePicker> {
     if (mounted) setState(() => _busy = null);
   }
 
+  Future<void> _setPace(double pace) async {
+    try {
+      final saved = await widget.brain.hub.setPace(pace);
+      if (mounted) setState(() => _pace = saved);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Widget _speedSlider() {
+    final pace = (_pace ?? 1.0).clamp(0.8, 1.5);
+    return ListTile(
+      title: Text('Talking speed · ${(pace * 100).round()}%'),
+      subtitle: Slider(
+        value: pace,
+        min: 0.8,
+        max: 1.5,
+        divisions: 14,
+        label: '${(pace * 100).round()}%',
+        onChanged: (v) => setState(() => _pace = v),
+        onChangeEnd: _setPace,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -207,6 +239,7 @@ class _VoicePickerState extends State<_VoicePicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _speedSlider(),
         for (final v in voices)
           ListTile(
             enabled: v['available'] == true,
@@ -227,6 +260,98 @@ class _VoicePickerState extends State<_VoicePicker> {
                     onPressed: v['available'] == true ? () => _preview(v['id'] as String) : null,
                   ),
             onTap: v['current'] == true ? null : () => _pick(v['id'] as String),
+          ),
+      ],
+    );
+  }
+}
+
+/// "Is it my mic or the AI?" Records one phrase, shows how loud the mic is
+/// compared with what Gipsy needs, then sends it to the PC to be written down.
+class _MicTest extends StatefulWidget {
+  const _MicTest({required this.brain});
+  final GipsyBrain brain;
+
+  @override
+  State<_MicTest> createState() => _MicTestState();
+}
+
+class _MicTestState extends State<_MicTest> {
+  bool _running = false;
+  double _loudest = -90;
+  String? _result;
+
+  void _onDb() {
+    final db = widget.brain.ears.db.value;
+    if (db > _loudest) _loudest = db;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _run() async {
+    final brain = widget.brain;
+    setState(() {
+      _running = true;
+      _loudest = -90;
+      _result = 'Say something like "what\'s on this week"...';
+    });
+    await brain.pause(); // stop the wake-word loop so it doesn't share the mic
+    final ears = brain.ears;
+    ears.db.addListener(_onDb);
+    String? clip;
+    try {
+      if (!await ears.hasPermission()) {
+        _result = 'Windows is blocking the mic. Settings > Privacy & security > Microphone: turn on '
+            '"Microphone access" and "Let desktop apps access your microphone".';
+      } else {
+        clip = await ears.listenOnce(waitForSpeech: const Duration(seconds: 6), maxPhrase: const Duration(seconds: 6));
+        if (clip == null) {
+          _result = _loudest <= -85
+              ? 'The mic sent pure silence. It is muted, blocked by Windows, or the wrong input device is selected '
+                    '(Settings > System > Sound > Input).'
+              : 'Your loudest sound was ${_loudest.round()} dB, but Gipsy needs about ${ears.threshold.round()} dB. '
+                    'Move closer or turn the input volume up (Settings > System > Sound > Input).';
+        } else {
+          _result = 'The mic works (loudest ${_loudest.round()} dB). Sending it to your PC...';
+          if (mounted) setState(() {});
+          final heard = await brain.hub.transcribe(clip);
+          _result = heard.isEmpty
+              ? 'The mic works, but Whisper heard no words. Speak a bit louder or closer.'
+              : 'Everything works. Gipsy heard: "$heard"';
+        }
+      }
+    } catch (e) {
+      _result = 'The mic works, but the PC failed: $e';
+    } finally {
+      ears.db.removeListener(_onDb);
+      brain.resume();
+    }
+    if (mounted) setState(() => _running = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ears = widget.brain.ears;
+    final live = ears.db.value;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          title: const Text('Test microphone'),
+          subtitle: const Text('Checks your mic, then what Gipsy hears', style: TextStyle(fontSize: 12)),
+          trailing: FilledButton.tonal(onPressed: _running ? null : _run, child: Text(_running ? 'Listening' : 'Test')),
+        ),
+        if (_running)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: LinearProgressIndicator(
+              value: ((live + 90) / 90).clamp(0.0, 1.0),
+              color: live > ears.threshold ? GipsyColors.amber : GipsyColors.steel,
+            ),
+          ),
+        if (_result != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(_result!, style: const TextStyle(color: GipsyColors.steel, fontSize: 12)),
           ),
       ],
     );
