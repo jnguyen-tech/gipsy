@@ -14,7 +14,7 @@ commanding. It's made on your PC by taking a stock voice and reshaping it.
 
 | Preset | Engine | What it sounds like | Install |
 |---|---|---|---|
-| `commander` (default) | Piper | Alan, pitched down 14%, warmer, with some gravel, talking 8% faster | nothing |
+| `commander` (default) | Piper | Alan, pitched down 8%, warmer, with some gravel, talking 8% faster | nothing |
 | `marshal` | Kokoro | Gipsy's best voice: George + Lewis blended into one new voice, deep and gravelly | `install_better_voices.bat` |
 | `george`, `lewis`, `daniel`, `fable` | Kokoro | Kokoro's four British male voices, slightly deeper | `install_better_voices.bat` |
 | `northern` | Piper | A Northern English male, pitched down | nothing |

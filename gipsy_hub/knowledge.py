@@ -37,7 +37,9 @@ _WORD = re.compile(r"[a-z0-9]+")
 _STOP = set(
     "a an and are as at be but by can do does for from how i if in is it its me my of on or so "
     "that the their them then there these they this to was what when where which who why will "
-    "with you your about should would could tell explain gipsy".split()
+    "with you your about should would could tell explain gipsy john hello hi hey thanks thank "
+    "today good sounds ok okay yes yeah no please now just like get know want need sure great "
+    "nice morning evening night let lets go going".split()
 )
 
 
@@ -151,6 +153,18 @@ class KnowledgePack:
 
     # ------------------------------------------------------------ search --
 
+    def is_on_topic(self, text: str) -> bool:
+        """True if the message names something a lesson is about (a word in a
+        lesson title, like 'EMA', 'gold', 'yield' or 'TradingView')."""
+        titles = {t for c in self.chunks for t in words(c.title.replace(">", " "))}
+        for w in set(words(text)):
+            if w in titles:
+                return True
+            # "candle" ~ "candlesticks", "crosses" ~ "crossovers"
+            if len(w) >= 4 and any(t.startswith(w[:5]) for t in titles if len(t) >= 4):
+                return True
+        return False
+
     def keyword_scores(self, query: str) -> list[tuple[float, Chunk]]:
         q = set(words(query))
         if not q:
@@ -158,7 +172,10 @@ class KnowledgePack:
         total = sum(self.idf.get(t, 0) for t in q) or 1
         out = []
         for c in self.chunks:
-            hit = sum(self.idf.get(t, 0) for t in q & c.terms)
+            matched = q & c.terms
+            if len(matched) < min(2, len(q)):
+                continue  # one shared word (often a common one) isn't enough
+            hit = sum(self.idf.get(t, 0) for t in matched)
             out.append((hit / total, c))
         return sorted(out, key=lambda x: -x[0])
 
