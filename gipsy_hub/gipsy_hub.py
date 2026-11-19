@@ -36,9 +36,16 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 from knowledge import KnowledgePack
+import markets
 import briefing
 import tools as _tools_module
 from tools import TOOLS, describe_call, run_tool
+
+# Market calendar + portfolio tools live in markets.py.
+TOOLS += markets.TOOLS
+_tools_module.FUNCTIONS.update(markets.FUNCTIONS)
+for _name, _line in markets.DESCRIBE.items():
+    _tools_module.EXTRA_DESCRIPTIONS[_name] = lambda args, _line=_line: _line
 
 HERE = Path(__file__).resolve().parent
 # Where config.json, downloaded voices and hub.log live. Next to this file by
@@ -497,7 +504,7 @@ async def knowledge_search(q: str, k: int = 3) -> dict[str, Any]:
 async def tool_test(name: str, q: str = "") -> dict[str, Any]:
     """Run one tool by hand, e.g. /api/tools/get_price?q=gold"""
     first = {"search_news": "query", "web_search": "query", "get_price": "symbol",
-             "get_emas": "symbol", "get_economic": "series"}.get(name, "query")
+             "get_emas": "symbol", "get_economic": "series", "market_calendar": "days"}.get(name, "query")
     return await run_tool(name, {first: q} if q else {})
 
 
@@ -539,6 +546,31 @@ async def tasks_done(task_id: str) -> dict[str, Any]:
 @app.delete("/api/tasks/{task_id}", dependencies=[Depends(check_key)])
 async def tasks_delete(task_id: str) -> dict[str, bool]:
     return {"deleted": await briefing.delete_task(task_id)}
+
+
+class CalendarIn(BaseModel):
+    name: str = ""
+    url: str
+    kind: str = "calendar"  # "school", "appointment" or "calendar"
+
+
+@app.get("/api/calendars", dependencies=[Depends(check_key)])
+async def calendars_list() -> list[dict[str, Any]]:
+    """Linked calendars. Links are masked: an iCal link is as good as a password."""
+    return [briefing.public_calendar(c) for c in briefing.all_calendars()]
+
+
+@app.post("/api/calendars", dependencies=[Depends(check_key)])
+async def calendars_add(body: CalendarIn) -> dict[str, Any]:
+    try:
+        return await briefing.link_calendar(body.name, body.url, body.kind)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/calendars/{cal_id}", dependencies=[Depends(check_key)])
+async def calendars_delete(cal_id: str) -> dict[str, bool]:
+    return {"deleted": await briefing.unlink_calendar(cal_id)}
 
 
 # ---------------------------------------------------------------- health ----

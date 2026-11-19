@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'calendars_sheet.dart';
 import 'hub_client.dart';
 import 'theme.dart';
 
@@ -74,7 +75,17 @@ class _WeekPageState extends State<WeekPage> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: const TrackedLabel('This week', color: GipsyColors.steelBright, size: 14),
-          actions: [IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh))],
+          actions: [
+            IconButton(
+              tooltip: 'Calendars',
+              icon: const Icon(Icons.link),
+              onPressed: () async {
+                await showCalendarsSheet(context, widget.hub);
+                await _load();
+              },
+            ),
+            IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh)),
+          ],
         ),
         body: RefreshIndicator(
           onRefresh: _load,
