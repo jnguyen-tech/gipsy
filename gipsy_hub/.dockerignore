@@ -1,0 +1,12 @@
+.venv/
+voices/
+config.json
+hub.log
+__pycache__/
+*.pyc
+tests/
+knowledge/.index.json
+*.bat
+*.vbs
+Dockerfile
+.dockerignore

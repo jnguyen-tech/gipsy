@@ -21,6 +21,7 @@ Data sources (no keys): Nasdaq's earnings calendar, the BLS release calendar
 from __future__ import annotations
 
 import json
+import os
 import logging
 import re
 from datetime import date, datetime, timedelta
@@ -33,7 +34,8 @@ from tools import TIMEOUT, UA, cached, get_emas, get_price
 
 log = logging.getLogger("gipsy")
 HERE = Path(__file__).resolve().parent
-PORTFOLIO = HERE / "portfolio.json"
+# GIPSY_DATA_DIR is /data in Docker so the portfolio survives updates.
+PORTFOLIO = Path(os.environ.get("GIPSY_DATA_DIR") or HERE) / "portfolio.json"
 
 # Second day of each FOMC meeting: the 2 PM ET statement, then the press
 # conference. Source: federalreserve.gov FOMC calendar. Add next year's dates
