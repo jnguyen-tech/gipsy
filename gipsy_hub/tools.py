@@ -16,6 +16,7 @@ Tools here (none need an API key):
                   whether a golden/death cross happened recently
   get_economic    US economic series from FRED (mortgage rate, home prices,
                   CPI, unemployment, Fed funds rate)
+  get_weather     current weather + the next few days (Open-Meteo)
 """
 
 from __future__ import annotations
@@ -400,9 +401,102 @@ async def get_economic(series: str) -> dict[str, Any]:
     return out
 
 
+# ----------------------------------------------------------------- weather --
+
+# The hub sets this from config.json ("home_location"), e.g. "Oklahoma City".
+SETTINGS: dict[str, Any] = {"home_location": ""}
+
+_WMO = {
+    0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "icy fog",
+    51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 56: "freezing drizzle", 57: "freezing drizzle",
+    61: "light rain", 63: "rain", 65: "heavy rain", 66: "freezing rain", 67: "freezing rain",
+    71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains", 80: "rain showers",
+    81: "rain showers", 82: "violent rain showers", 85: "snow showers", 86: "heavy snow showers",
+    95: "thunderstorms", 96: "thunderstorms with hail", 99: "thunderstorms with hail",
+}
+
+
+async def get_weather(location: str = "", days: int = 3) -> dict[str, Any]:
+    """Weather from Open-Meteo (free, no key). Fahrenheit and mph."""
+    place = (location or SETTINGS.get("home_location") or "").strip()
+    if not place:
+        return {"error": "No location given, and home_location isn't set in the hub's config.json. Ask John which city."}
+    days = max(1, min(int(days or 3), 7))
+    async with httpx.AsyncClient(timeout=TIMEOUT, headers=UA) as client:
+        g = await client.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params={"name": place.split(",")[0].strip(), "count": 1, "language": "en"},
+        )
+        g.raise_for_status()
+        found = (g.json().get("results") or [None])[0]
+        if not found:
+            raise LookupError(f"Couldn't find a place called {place!r}")
+        r = await client.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params={
+                "latitude": found["latitude"],
+                "longitude": found["longitude"],
+                "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m",
+                "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+                "temperature_unit": "fahrenheit",
+                "wind_speed_unit": "mph",
+                "timezone": "auto",
+                "forecast_days": days,
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+    cur = data.get("current", {})
+    daily = data.get("daily", {})
+    return {
+        "place": ", ".join(x for x in (found.get("name"), found.get("admin1"), found.get("country_code")) if x),
+        "now": {
+            "temp_f": cur.get("temperature_2m"),
+            "feels_like_f": cur.get("apparent_temperature"),
+            "sky": _WMO.get(cur.get("weather_code"), "unknown"),
+            "wind_mph": cur.get("wind_speed_10m"),
+            "humidity_pct": cur.get("relative_humidity_2m"),
+        },
+        "days": [
+            {
+                "date": d,
+                "sky": _WMO.get(code, "unknown"),
+                "high_f": hi,
+                "low_f": lo,
+                "rain_chance_pct": rain,
+            }
+            for d, code, hi, lo, rain in zip(
+                daily.get("time", []),
+                daily.get("weather_code", []),
+                daily.get("temperature_2m_max", []),
+                daily.get("temperature_2m_min", []),
+                daily.get("precipitation_probability_max", []),
+            )
+        ],
+        "source": "Open-Meteo",
+    }
+
+
 # ------------------------------------------------------ tool registry -------
 
 TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": (
+                "Current weather and the forecast. Use for any question about weather, temperature, "
+                "rain, snow or what to wear. Leave location empty for John's home."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "City, e.g. 'Norman' or 'London'. Empty = home."},
+                    "days": {"type": "integer", "description": "Days of forecast, 1-7"},
+                },
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -487,6 +581,7 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 FUNCTIONS: dict[str, Callable[..., Awaitable[dict[str, Any]]]] = {
+    "get_weather": get_weather,
     "search_news": search_news,
     "web_search": web_search,
     "get_price": get_price,
@@ -505,6 +600,7 @@ def describe_call(name: str, args: dict[str, Any]) -> str:
         return EXTRA_DESCRIPTIONS[name](args)
     a = next((str(v) for v in args.values() if v), "")
     return {
+        "get_weather": f"Checking the weather in {a}" if a else "Checking the weather",
         "search_news": f"Checking the news: {a}" if a else "Checking today's headlines",
         "web_search": f"Searching the web: {a}",
         "get_price": f"Looking up the price of {a}",

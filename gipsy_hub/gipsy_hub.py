@@ -127,6 +127,21 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "sentences) unless John asks for detail. Your replies may be read "
         "aloud, so avoid markdown tables, code blocks and emoji unless asked."
     ),
+    # City for weather questions when John doesn't name one, e.g. "Oklahoma City".
+    "home_location": "",
+    # House rules added to every chat (kept separate so updates reach old configs).
+    "behaviour_prompt": (
+        "Rules: Never say you did something (set a reminder or alarm, sent a message, "
+        "saved a file) unless a tool actually did it in this chat. You can add items to "
+        "John's to-do list with add_task; you cannot set timed reminders or alarms, so say "
+        "so and offer add_task instead. For weather, call get_weather; for other live facts, "
+        "call web_search or search_news instead of saying you don't have the data. If John's "
+        "message is unclear or looks like a speech-to-text mistake, ask what he meant; "
+        "never just repeat your previous answer."
+    ),
+    # Sampling for the daily (non-thinking) model. These are Qwen3's suggested
+    # settings; presence_penalty stops it repeating itself.
+    "model_options": {"temperature": 0.7, "top_p": 0.8, "top_k": 20, "presence_penalty": 1.0},
     # Added after system_prompt on every chat. {now} becomes the PC's date/time.
     "tools_prompt": (
         "It is now {now}. Your built-in knowledge stops well before today, so for "
@@ -156,6 +171,7 @@ def load_config() -> dict[str, Any]:
 CFG = load_config()
 
 # This week's tasks: calendars + to-do list (+ market events when markets.py is present).
+_tools_module.SETTINGS["home_location"] = CFG.get("home_location", "")
 briefing.init(CFG)
 briefing.install_tools(_tools_module)
 try:
@@ -404,6 +420,8 @@ def system_messages() -> list[dict[str, Any]]:
     if CFG.get("tools_enabled", True) or CFG.get("knowledge_enabled", True):
         now = datetime.now().astimezone().strftime("%A %d %B %Y, %I:%M %p %Z")
         text += "\n\n" + CFG.get("tools_prompt", "").replace("{now}", now)
+    if CFG.get("behaviour_prompt"):
+        text += "\n\n" + CFG["behaviour_prompt"]
     return [{"role": "system", "content": text}]
 
 
@@ -413,6 +431,10 @@ async def knowledge_for(messages: list[dict[str, Any]]) -> tuple[Optional[str], 
         return None, []
     users = [m["content"] for m in messages if m["role"] == "user"]
     if not users:
+        return None, []
+    # Small talk ("Hello", "Sounds good", "what's the weather") skips the notes:
+    # the latest message has to mention something the lessons are about.
+    if not KNOWLEDGE.is_on_topic(users[-1]):
         return None, []
     # Include the previous question too, so "and what about silver?" still works.
     query = users[-1] if len(users) < 2 else users[-2][-200:] + "\n" + users[-1]
@@ -470,7 +492,10 @@ async def stream_ollama(body: ChatIn) -> AsyncIterator[bytes]:
                     "stream": True,
                     "think": think,
                     "keep_alive": CFG["keep_alive"],
-                    "options": {"num_ctx": CFG["context_length"]},
+                    "options": {
+                        **({} if think else (CFG.get("model_options") or {})),
+                        "num_ctx": CFG["context_length"],
+                    },
                 }
                 # Last round: no tools, so the model has to answer in words.
                 if use_tools and round_no < rounds:

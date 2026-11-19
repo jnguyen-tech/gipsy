@@ -44,7 +44,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "label": "Commander (Gipsy's own, default)",
         "engine": "piper",
         "voice": "en_GB-alan-medium",
-        "pitch": 0.86,
+        "pitch": 0.92,
         "pace": 1.08,
         "warmth": 0.55,
         "grit": 0.25,

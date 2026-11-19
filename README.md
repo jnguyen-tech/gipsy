@@ -170,6 +170,7 @@ The step-by-step guide for first-time Docker users (installing Docker Desktop, P
 ``` You can change what Gipsy says with `kaiju_line`. Restart the hub after editing.
 
 **Settings** live in `gipsy_hub/config.json`, which is created on the first run:
+* `home_location`: your city for weather questions, e.g. `"Oklahoma City"` (empty = Gipsy asks).
 * `voice_preset`: `commander` by default. See [docs/VOICE.md](docs/VOICE.md) for every voice and how to fine-tune pitch, pace, warmth and grit.
 * `daily_model` / `deep_model`: which Ollama models to use.
 * `whisper_model`: `base.en` (fast) or `small.en` (more accurate).
