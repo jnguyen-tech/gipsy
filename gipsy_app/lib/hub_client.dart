@@ -168,6 +168,37 @@ class HubClient {
     final base = await _base();
     await _http.delete(Uri.parse('$base/api/tasks/$id'), headers: _headers).timeout(const Duration(seconds: 10));
   }
+
+  /// Calendars the hub reads (links come back masked).
+  Future<List<Map<String, dynamic>>> calendars() async {
+    final base = await _base();
+    final r = await _http.get(Uri.parse('$base/api/calendars'), headers: _headers).timeout(const Duration(seconds: 10));
+    if (r.statusCode == 404) throw HubException('Update Gipsy Hub on the PC to link calendars from the app.');
+    if (r.statusCode != 200) throw HubException('Couldn\'t load calendars (${r.statusCode})');
+    return (jsonDecode(r.body) as List).cast<Map<String, dynamic>>();
+  }
+
+  /// Links an iCal feed. Returns the saved calendar plus {ok, error} from a test download.
+  Future<Map<String, dynamic>> linkCalendar(String name, String url, String kind) async {
+    final base = await _base();
+    final r = await _http
+        .post(
+          Uri.parse('$base/api/calendars'),
+          headers: {..._headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({'name': name, 'url': url, 'kind': kind}),
+        )
+        .timeout(const Duration(seconds: 40));
+    if (r.statusCode != 200) {
+      final detail = (jsonDecode(r.body) as Map?)?['detail'];
+      throw HubException(detail is String ? detail : 'Couldn\'t link the calendar (${r.statusCode})');
+    }
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  Future<void> unlinkCalendar(String id) async {
+    final base = await _base();
+    await _http.delete(Uri.parse('$base/api/calendars/$id'), headers: _headers).timeout(const Duration(seconds: 10));
+  }
 }
 
 class HubException implements Exception {

@@ -48,7 +48,7 @@ Logos: the **Armored Visor** is the iPhone icon, the **Armored G** is the Window
 Tap the **calendar icon** in the app, or just ask: *"Hey Gipsy, what's due this week?"*, *"Am I free Thursday?"*, *"Add a task: chem lab report due Friday"*, *"I finished the chem lab report."*
 
 Gipsy combines:
-* **Your calendars:** any iCal (`.ics`) link. Paste them into `gipsy_hub/config.json` and restart the hub:
+* **Your calendars:** any iCal (`.ics`) link. The easy way: on the **This week** screen tap the **link icon**, paste the link and pick School or Appointments. Gipsy tests the link straight away. Or paste them into `gipsy_hub/config.json` and restart the hub:
   ```json
   "calendars": [
     {"name": "School", "url": "https://<your school calendar feed>.ics", "kind": "school"},
@@ -56,13 +56,14 @@ Gipsy combines:
   ]
   ```
   * **Google Calendar:** Settings → pick the calendar → *Integrate calendar* → copy **Secret address in iCal format**.
+  * **Moodle / Open LMS:** Calendar → *Import or export calendars* → *Export calendar* → Events to export: **All courses** (or *All events*), Time period: **Recent and next 60 days** → *Get calendar URL* → copy the link. Pick **School** when you link it.
   * **Canvas:** Calendar → *Calendar Feed* (bottom right) → copy the link. Schoology and most school systems have a similar "iCal feed" or "subscribe" link.
   * **Outlook:** Settings → Calendar → Shared calendars → *Publish a calendar* → copy the ICS link.
   * **iPhone/iCloud:** in the Calendar app, tap ⓘ next to a calendar → *Public Calendar* → share the link.
 
-  These links are private. They live only in `config.json` on your PC, which is never uploaded to GitHub.
+  These links are private. They live only on your PC (`config.json`, or `calendars.json` for links added in the app), which are never uploaded to GitHub, and the app only ever shows them masked.
 * **Your to-do list:** saved on the PC in `gipsy_hub/tasks.json`. Add or tick off tasks by voice or in the app.
-* **Market events:** Fed meetings, CPI and jobs reports, and earnings for the stocks you follow, from the markets module.
+* **Market events:** built in are US stock market holidays, 1 PM early closes, and monthly options expiry (quadruple witching in March, June, September and December), worked out from the exchange's rules so they never go stale. Fed meetings, CPI and jobs reports, and earnings for the stocks you follow come from the markets module.
 
 ---
 

@@ -542,6 +542,31 @@ async def tasks_delete(task_id: str) -> dict[str, bool]:
     return {"deleted": await briefing.delete_task(task_id)}
 
 
+class CalendarIn(BaseModel):
+    name: str = ""
+    url: str
+    kind: str = "calendar"  # "school", "appointment" or "calendar"
+
+
+@app.get("/api/calendars", dependencies=[Depends(check_key)])
+async def calendars_list() -> list[dict[str, Any]]:
+    """Linked calendars. Links are masked: an iCal link is as good as a password."""
+    return [briefing.public_calendar(c) for c in briefing.all_calendars()]
+
+
+@app.post("/api/calendars", dependencies=[Depends(check_key)])
+async def calendars_add(body: CalendarIn) -> dict[str, Any]:
+    try:
+        return await briefing.link_calendar(body.name, body.url, body.kind)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/calendars/{cal_id}", dependencies=[Depends(check_key)])
+async def calendars_delete(cal_id: str) -> dict[str, bool]:
+    return {"deleted": await briefing.unlink_calendar(cal_id)}
+
+
 # ---------------------------------------------------------------- health ----
 
 
