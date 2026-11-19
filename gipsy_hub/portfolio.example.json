@@ -1,0 +1,8 @@
+{
+  "updated": "2026-11-18 (example, edit me or ask Claude to sync from Robinhood)",
+  "holdings": [
+    {"symbol": "VOO", "shares": 2, "average_cost": 520.00},
+    {"symbol": "NVDA", "shares": 3, "average_cost": 140.00}
+  ],
+  "watchlist": ["AAPL", "TSLA", "GLD", "SLV", "BTC-USD"]
+}
