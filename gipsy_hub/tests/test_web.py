@@ -23,7 +23,7 @@ c = TestClient(gipsy_hub.app)
 out = {}
 for path in ["/", "/index.html", "/manifest.json", "/api/kaiju"]:
     r = c.get(path)
-    out[path] = [r.status_code, r.text[:200], r.headers.get("cache-control")]
+    out[path] = [r.status_code, r.text[:2000], r.headers.get("cache-control")]
 print(json.dumps(out))
 """
 
