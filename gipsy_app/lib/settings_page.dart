@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'brain.dart';
+import 'platform/platform.dart';
+import 'settings.dart';
 import 'theme.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -52,6 +55,15 @@ class _SettingsPageState extends State<SettingsPage> {
           padding: const EdgeInsets.all(16),
           children: [
             const _Header('Your PC'),
+            if (GipsySettings.pageOrigin != null)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'You opened Gipsy from your hub, so it already knows where your PC is. '
+                  'You can leave both addresses empty.',
+                  style: TextStyle(color: GipsyColors.steel),
+                ),
+              ),
             TextField(
               controller: _home,
               keyboardType: TextInputType.url,
@@ -226,10 +238,13 @@ class _VoicePickerState extends State<_VoicePicker> {
       return ListTile(
         title: const Text('Gipsy\'s voice'),
         subtitle: Text(_error!, style: const TextStyle(color: GipsyColors.steel)),
-        trailing: IconButton(icon: const Icon(Icons.refresh), onPressed: () {
-          setState(() => _error = null);
-          _load();
-        }),
+        trailing: IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: () {
+            setState(() => _error = null);
+            _load();
+          },
+        ),
       );
     }
     final voices = _voices;
@@ -299,9 +314,14 @@ class _MicTestState extends State<_MicTest> {
     ears.db.addListener(_onDb);
     String? clip;
     try {
-      if (!await ears.hasPermission()) {
-        _result = 'Windows is blocking the mic. Settings > Privacy & security > Microphone: turn on '
-            '"Microphone access" and "Let desktop apps access your microphone".';
+      if (micProblem() != null) {
+        _result = micProblem()!;
+      } else if (!await ears.hasPermission()) {
+        _result = kIsWeb
+            ? 'Safari is blocking the mic. On iPhone/iPad: Settings > Apps > Safari > Microphone > Allow, '
+                  'then close Gipsy and open it again.'
+            : 'Windows is blocking the mic. Settings > Privacy & security > Microphone: turn on '
+                  '"Microphone access" and "Let desktop apps access your microphone".';
       } else {
         clip = await ears.listenOnce(waitForSpeech: const Duration(seconds: 6), maxPhrase: const Duration(seconds: 6));
         if (clip == null) {

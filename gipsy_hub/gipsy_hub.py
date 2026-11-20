@@ -780,6 +780,60 @@ async def warm_up() -> None:
         asyncio.create_task(KNOWLEDGE.build_index())
 
 
+# --------------------------------------------------------- web version ----
+# The hub also hands out the web version of the app (gipsy_app built for
+# the browser). Open the hub's address in Safari on iPhone/iPad, tap Share >
+# Add to Home Screen, and Gipsy opens full screen like an app. Because the
+# page comes from the hub, the app already knows where the hub is.
+#
+# install_web_app.bat downloads the latest build into gipsy_hub/web.
+
+
+def find_web_dir() -> Optional[Path]:
+    """The folder with the built web app (index.html), or None."""
+    candidates = [
+        os.environ.get("GIPSY_WEB_DIR") or "",
+        DATA_DIR / "web",  # Docker: docker-data/hub/web
+        HERE / "web",  # install_web_app.bat puts it here
+        HERE.parent / "gipsy_app" / "build" / "web",  # built on this PC with Flutter
+    ]
+    for c in candidates:
+        if c and (Path(c) / "index.html").is_file():
+            return Path(c)
+    return None
+
+
+WEB_DIR = find_web_dir()
+
+if WEB_DIR is not None:
+    from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+    class WebApp(StaticFiles):
+        """Static files that the phone re-checks each time it opens Gipsy,
+        so a new build shows up straight away instead of an old cached one."""
+
+        async def get_response(self, path: str, scope):  # type: ignore[override]
+            resp = await super().get_response(path, scope)
+            resp.headers["Cache-Control"] = "no-cache"
+            return resp
+
+    # Mounted last, so every /api/... route above still wins.
+    app.mount("/", WebApp(directory=WEB_DIR, html=True), name="web")
+    log.info("Serving the web app from %s", WEB_DIR)
+else:
+
+    @app.get("/", include_in_schema=False)
+    async def no_web_app() -> Response:
+        html = (
+            "<html><body style='background:#0A0F1C;color:#C9CFDD;font-family:system-ui;padding:24px'>"
+            "<h2>Gipsy Hub is running</h2>"
+            "<p>The web version of the app isn't installed yet. On the PC, double-click "
+            "<b>install_web_app.bat</b> in the gipsy_hub folder, then restart the hub.</p>"
+            "</body></html>"
+        )
+        return Response(html, media_type="text/html")
+
+
 if __name__ == "__main__":
     import socket
     import sys
@@ -807,6 +861,10 @@ if __name__ == "__main__":
     else:
         print(f"  On your Wi-Fi:   http://{lan_ip}:{CFG['port']}")
     print("  On Tailscale:    http://<this PC's 100.x address>:%d" % CFG["port"])
+    if WEB_DIR is not None:
+        print("  iPhone / iPad:   https://<this PC's name>.<tailnet>.ts.net  (after: tailscale serve --bg %d)" % CFG["port"])
+    else:
+        print("  Web app:         not installed (run install_web_app.bat)")
     print(f"  Ollama:          {CFG['ollama_url']}")
     print()
     uvicorn.run(app, host=CFG["host"], port=int(CFG["port"]), log_level="warning")
