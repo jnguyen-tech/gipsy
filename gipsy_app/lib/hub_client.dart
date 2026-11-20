@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
+import 'platform/platform.dart';
 import 'settings.dart';
 
 /// One event from the hub's /api/chat stream.
@@ -166,7 +167,9 @@ class HubClient {
     final base = await _base();
     final req = http.MultipartRequest('POST', Uri.parse('$base/api/stt'))
       ..headers.addAll(_headers)
-      ..files.add(await http.MultipartFile.fromPath('audio', wavPath, filename: 'clip.wav'));
+      ..files.add(http.MultipartFile.fromBytes('audio', await readClip(wavPath), filename: 'clip.wav'));
+    // The clip has been read, so it can go (temp file, or blob: link in a browser).
+    unawaited(deleteClip(wavPath));
     final res = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 60)));
     if (res.statusCode != 200) throw HubException('Hearing failed: ${hubDetail(res) ?? res.statusCode}');
     return ((jsonDecode(res.body) as Map)['text'] as String? ?? '').trim();

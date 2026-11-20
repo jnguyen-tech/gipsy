@@ -55,13 +55,37 @@ class GipsySettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool get isConfigured => homeUrl.trim().isNotEmpty || tailscaleUrl.trim().isNotEmpty;
+  bool get isConfigured => candidateUrls.isNotEmpty;
+
+  /// In the web version: the address the page was opened from. The hub
+  /// serves the web app itself, so that address IS the hub. Null in the
+  /// native apps.
+  static String? get pageOrigin {
+    if (!kIsWeb) return null;
+    final u = Uri.base;
+    return (u.scheme == 'http' || u.scheme == 'https') ? u.origin : null;
+  }
 
   /// Addresses to try, in order. Home Wi-Fi first because it is fastest.
-  List<String> get candidateUrls => [homeUrl, tailscaleUrl]
-      .map((u) => u.trim())
-      .where((u) => u.isNotEmpty)
-      .map((u) => u.startsWith('http') ? u : 'http://$u')
-      .map((u) => u.endsWith('/') ? u.substring(0, u.length - 1) : u)
-      .toList();
+  /// The web version tries the page's own address first.
+  List<String> get candidateUrls {
+    final origin = pageOrigin;
+    final urls = [?origin, homeUrl, tailscaleUrl]
+        .map((u) => u.trim())
+        .where((u) => u.isNotEmpty)
+        .map((u) => u.startsWith('http') ? u : 'http://$u')
+        .map((u) => u.endsWith('/') ? u.substring(0, u.length - 1) : u)
+        // A secure (https) page may not call plain http addresses.
+        .where((u) => origin == null || !origin.startsWith('https:') || u.startsWith('https:'))
+        .toList();
+    return urls.toSet().toList();
+  }
+
+  /// A short name for [url] in the status line.
+  String describe(String url) {
+    if (url == pageOrigin) return 'this address';
+    final home = homeUrl.trim();
+    if (home.isNotEmpty && url.contains(home.replaceFirst(RegExp(r'^https?://'), ''))) return 'home Wi-Fi';
+    return 'Tailscale';
+  }
 }

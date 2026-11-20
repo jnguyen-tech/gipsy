@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'hub_client.dart';
+import 'platform/platform.dart';
 import 'settings.dart';
 import 'visor.dart';
 import 'voice.dart';
@@ -81,8 +82,7 @@ class GipsyBrain extends ChangeNotifier {
       } else if (!hubInfo!.ollamaUp) {
         status = 'Hub is up, but Ollama is not running';
       } else {
-        final via = hubInfo!.url == settings.candidateUrls.first ? 'home Wi-Fi' : 'Tailscale';
-        status = 'Online via ${settings.candidateUrls.length > 1 ? via : hubInfo!.url}';
+        status = 'Online via ${settings.candidateUrls.length > 1 ? settings.describe(hubInfo!.url) : hubInfo!.url}';
         final problems = hubInfo!.problems;
         if (problems.containsKey('hearing')) status += ' · hearing is broken: ${problems['hearing']}';
         if (problems.containsKey('voice')) status += ' · voice problem: ${problems['voice']}';
@@ -165,7 +165,7 @@ class GipsyBrain extends ChangeNotifier {
       micAllowed = await ears.hasPermission();
       if (!micAllowed) {
         _setMode(GipsyMode.idle);
-        _system('Microphone access is off. Allow it in Settings to talk to Gipsy.');
+        _system(micProblem() ?? 'Microphone access is off. Allow it in Settings to talk to Gipsy.');
         _scheduleSleep();
         return;
       }

@@ -1,11 +1,10 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+
+import 'platform/platform.dart';
 
 /// Gipsy's ears: records the mic and cuts out one spoken phrase at a time.
 ///
@@ -32,9 +31,18 @@ class Ears {
   double _noiseFloor = -50; // dBFS, adapts to the room
   bool get isRecording => _busy;
 
-  Future<bool> hasPermission() => _rec.hasPermission();
+  /// Asks for the mic (the first time) and says whether we may use it.
+  Future<bool> hasPermission() async {
+    if (micProblem() != null) return false;
+    try {
+      return await _rec.hasPermission();
+    } catch (_) {
+      return false;
+    }
+  }
 
-  /// Records until a phrase ends.
+  /// Records until a phrase ends. Returns the recording (a file path, or a
+  /// blob: link in the browser), or null if nobody spoke.
   ///
   /// [waitForSpeech]: give up (return null) if nobody speaks within this time.
   /// [maxPhrase]: hard cap on one phrase.
@@ -45,8 +53,7 @@ class Ears {
   }) async {
     if (_busy) await stop();
     _busy = true;
-    final dir = await getTemporaryDirectory();
-    final path = '${dir.path}${Platform.pathSeparator}gipsy_${DateTime.now().millisecondsSinceEpoch}.wav';
+    final path = await newClipPath();
     await _rec.start(
       const RecordConfig(
         encoder: AudioEncoder.wav,
@@ -79,18 +86,18 @@ class Ears {
         speechStart ??= now;
       }
       if (speechStart == null && now.difference(started) > waitForSpeech) {
-        _finish(null);
+        _finish(false);
       } else if (speechStart != null &&
           (now.difference(lastLoud) > endSilence || now.difference(speechStart!) > maxPhrase)) {
         // Ignore tiny clicks shorter than ~0.3 s.
         final spoke = lastLoud.difference(speechStart!) > const Duration(milliseconds: 300);
-        _finish(spoke ? path : null);
+        _finish(spoke);
       }
     });
     return done.future;
   }
 
-  Future<void> _finish(String? path) async {
+  Future<void> _finish(bool keep) async {
     final done = _done;
     if (done == null || done.isCompleted) return;
     await _ampSub?.cancel();
@@ -98,16 +105,12 @@ class Ears {
     final saved = await _rec.stop();
     _busy = false;
     level.value = 0;
-    if (path == null && saved != null) {
-      try {
-        File(saved).deleteSync();
-      } catch (_) {}
-    }
-    done.complete(path);
+    if (!keep && saved != null) await deleteClip(saved);
+    done.complete(keep ? saved : null);
   }
 
   /// Stop listening right now (nothing is returned).
-  Future<void> stop() => _finish(null);
+  Future<void> stop() => _finish(false);
 
   Future<void> dispose() async {
     await stop();
@@ -119,9 +122,7 @@ class Ears {
 /// loudness envelope so the visor can move in time with the words.
 class Mouth {
   Mouth() {
-    // iOS: play through the loud speaker even right after recording.
-    AudioPlayer.global.setAudioContext(AudioContextConfig(route: AudioContextConfigRoute.speaker).build());
-    _player.onPositionChanged.listen((p) {
+    _player.onPosition.listen((p) {
       final env = _env;
       if (env == null || env.isEmpty) return;
       final i = (p.inMilliseconds / _envStepMs).floor();
@@ -129,7 +130,7 @@ class Mouth {
     });
   }
 
-  final AudioPlayer _player = AudioPlayer();
+  final ClipPlayer _player = ClipPlayer();
   final List<Uint8List> _queue = [];
   bool _playing = false;
   Completer<void>? _allDone;
@@ -163,25 +164,19 @@ class Mouth {
     speaking.value = true;
     final wav = _queue.removeAt(0);
     _env = _envelope(wav);
-    final dir = await getTemporaryDirectory();
-    final f = File('${dir.path}${Platform.pathSeparator}gipsy_say_${DateTime.now().microsecondsSinceEpoch}.wav');
-    await f.writeAsBytes(wav, flush: true);
     final done = Completer<void>();
     late final StreamSubscription sub;
-    sub = _player.onPlayerComplete.listen((_) {
+    sub = _player.onComplete.listen((_) {
       if (!done.isCompleted) done.complete();
     });
     try {
-      await _player.play(DeviceFileSource(f.path));
+      await _player.play(wav, '.wav');
       // Safety net in case the completion event never fires.
       await done.future.timeout(_duration(wav) + const Duration(seconds: 2), onTimeout: () {});
     } catch (e) {
       debugPrint('Playback failed: $e');
     } finally {
       await sub.cancel();
-      try {
-        f.deleteSync();
-      } catch (_) {}
     }
     _next();
   }
@@ -201,11 +196,8 @@ class Mouth {
     double duration = 0,
   }) async {
     await finished;
-    final dir = await getTemporaryDirectory();
-    final f = File('${dir.path}${Platform.pathSeparator}gipsy_song$ext');
-    await f.writeAsBytes(bytes, flush: true);
     final done = Completer<void>();
-    final sub = _player.onPlayerComplete.listen((_) {
+    final sub = _player.onComplete.listen((_) {
       if (!done.isCompleted) done.complete();
     });
     _allDone ??= Completer<void>();
@@ -220,9 +212,10 @@ class Mouth {
     Timer? fade;
     try {
       await _player.setVolume(1.0);
-      await _player.setPlaybackRate(rate);
       await _player.play(
-        DeviceFileSource(f.path),
+        bytes,
+        ext,
+        rate: rate,
         position: start > 0 ? Duration(milliseconds: (start * 1000).round()) : null,
       );
       if (duration > 0) {
@@ -250,7 +243,6 @@ class Mouth {
       await _player.setVolume(1.0);
       _musicPulse?.cancel();
       await sub.cancel();
-      await _player.setPlaybackRate(1.0);
       speaking.value = false;
       level.value = 0;
       final c = _allDone;

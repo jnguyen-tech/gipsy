@@ -25,7 +25,7 @@
   </tr>
 </table>
 
-Gipsy is a real installed app (not a website) that talks to the AI running on your own PC. One codebase builds for **Windows (desktop + laptop), iPhone, Android, Mac and Linux**.
+Gipsy is a real installed app (not a website) that talks to the AI running on your own PC. One codebase builds for **Windows (desktop + laptop), iPhone, Android, Mac and Linux**, plus a web version you can add to the iPhone/iPad Home Screen from Safari ([docs/WEB-APP.md](docs/WEB-APP.md)).
 
 ```mermaid
 flowchart LR
@@ -196,7 +196,8 @@ The apps are compiled on GitHub's free cloud machines. That way you don't need a
 | Device | File | Install |
 |---|---|---|
 | Windows PC or laptop | gipsy-windows | Unzip and run `gipsy.exe` (see below) |
-| iPhone / iPad | gipsy-ios-unsigned | Sideloadly (see below) |
+| iPhone / iPad | (no download) | **Easiest:** the web version, added to the Home Screen from Safari. No App Store, no re-signing. See [docs/WEB-APP.md](docs/WEB-APP.md). |
+| iPhone / iPad | gipsy-ios-unsigned | Or the native app with Sideloadly (see below) |
 | Android phone or tablet | gipsy-android | Open the `.apk` on the phone and allow "Install unknown apps" once. No re-signing. |
 | Mac | gipsy-mac | Unzip, drag to Applications, then right-click → Open the first time (it's unsigned) |
 | Linux | gipsy-linux | Extract and run `./gipsy` (needs `pulseaudio-utils` for the mic) |
@@ -290,16 +291,19 @@ Tests (no internet or Ollama needed): `cd gipsy_hub` then `python -m unittest di
 ## Files
 
 ```
+gipsy_app/web/       the web version's PWA files (manifest, icons, iPhone full-screen settings)
 gipsy_app/lib/
   main.dart          app start, pauses the mic when the phone app is in the background
   brain.dart         the sleep -> listen -> think -> speak state machine
   voice.dart         mic recording + silence detection, audio playback, wake-word matching
   hub_client.dart    talks to Gipsy Hub (Wi-Fi first, then Tailscale)
+  platform/          what's different in the browser version (recordings, sound, mic rules)
   visor.dart         the animated helmet and the spinning Reactor Core
   home_page.dart     main screen (side by side on PC, stacked on phone)
   settings_page.dart addresses, voice and wake-word switches
 gipsy_hub/
-  gipsy_hub.py       FastAPI server: /api/chat, /api/tts, /api/stt, /api/health
+  gipsy_hub.py       FastAPI server: /api/chat, /api/tts, /api/stt, /api/health, and the web app at /
+  install_web_app.bat downloads the newest web app into gipsy_hub/web
   tools.py           news, web search, prices, EMAs, FRED data the model can call
   knowledge.py       the RAG search over knowledge/*.md
   markets.py         market calendar (Fed, CPI, jobs, earnings, holidays) + portfolio.json
@@ -307,10 +311,12 @@ gipsy_hub/
   tests/             offline tests with a fake Ollama
   Dockerfile         the hub's container image
 .github/workflows/build-apps.yml   free cloud builds for Windows + iPhone
+.github/workflows/web-app.yml      builds the web app and publishes Gipsy-Web.zip
 .github/workflows/hub-docker.yml   builds the hub image and runs its tests on every push
 docker-compose.yml   hub + Open WebUI (+ Home Assistant) in one command
 .env.example         settings for docker-compose (copy to .env)
 docs/DOCKER.md       beginner's guide to the Docker setup
 docs/VOICE.md        Gipsy's voices, sample clips, speed tips
+docs/WEB-APP.md      Gipsy on iPhone/iPad from Safari's Home Screen (Tailscale https)
 docs/images/         screenshots and renders used in this README
 ```

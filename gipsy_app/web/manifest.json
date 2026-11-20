@@ -1,12 +1,14 @@
 {
-    "name": "gipsy",
-    "short_name": "gipsy",
-    "start_url": ".",
+    "name": "Gipsy",
+    "short_name": "Gipsy",
+    "id": "./",
+    "start_url": "./",
+    "scope": "./",
     "display": "standalone",
     "background_color": "#0A0F1C",
-    "theme_color": "#FF9A1F",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "theme_color": "#0A0F1C",
+    "description": "Gipsy, your local AI assistant. Talks to Gipsy Hub on your own PC.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

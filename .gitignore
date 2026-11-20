@@ -10,3 +10,4 @@ gipsy_hub/calendars.json
 .env
 docker-data/
 gipsy_hub/voice_samples/
+gipsy_hub/web/

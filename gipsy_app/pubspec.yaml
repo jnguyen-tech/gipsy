@@ -36,6 +36,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   http: ^1.6.0
+  web: ^1.1.0
   record: ^7.2.0
   audioplayers: ^6.8.1
   path_provider: ^2.1.6
@@ -115,6 +116,6 @@ flutter_launcher_icons:
     icon_size: 256
   web:
     generate: true
-    image_path: "assets/icon/armored_g_1024.png"
+    image_path: "assets/icon/armored_visor_1024.png"
     background_color: "#0A0F1C"
     theme_color: "#FF9A1F"
